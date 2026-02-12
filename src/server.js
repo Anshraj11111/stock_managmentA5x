@@ -49,13 +49,13 @@ const startServer = async () => {
      *
      * 👉 Use alter ONLY when you intentionally change schema
      */
-    if (process.env.NODE_ENV === "development") {
+    if (process.env.NODE_ENV !== "production") {
       // ❌ COMMENT THIS AFTER FIRST SUCCESSFUL RUN
       // await sequelize.sync({ alter: true });
 
       // ✅ Safe sync
       await sequelize.sync();
-      console.log("🗄️ Database synced (safe mode)");
+      console.log("🗄️ Database synced (alter mode)");
     }
 
     // Start server
@@ -67,6 +67,6 @@ const startServer = async () => {
     console.error(error);
     process.exit(1);
   }
-};
+}; 
 
 startServer();

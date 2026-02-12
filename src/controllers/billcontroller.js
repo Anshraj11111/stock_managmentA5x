@@ -244,6 +244,10 @@ export const createBill = async (req, res) => {
       return res.status(400).json({ message: "No items in bill" });
     }
 
+    if (!payments || payments.length === 0) {
+      return res.status(400).json({ message: "No payments provided" });
+    }
+
     let totalAmount = 0;
 
     // 🧾 Create Bill
@@ -295,12 +299,13 @@ export const createBill = async (req, res) => {
     let paidAmount = 0;
 
     for (const pay of payments) {
-      paidAmount += pay.amount;
+      const amount = parseFloat(pay.amount) || 0;
+      paidAmount += amount;
 
       await Payment.create(
         {
           bill_id: bill.id,
-          amount: pay.amount,
+          amount: amount,
           payment_mode: pay.mode,
           reference_id: pay.reference_id || null,
         },
@@ -308,14 +313,29 @@ export const createBill = async (req, res) => {
       );
     }
 
-    if (paidAmount !== totalAmount) {
-      throw new Error("Payment amount does not match bill total");
+    // Compare with tolerance for floating point issues
+    const tolerance = 0.01;
+    if (Math.abs(paidAmount - totalAmount) > tolerance) {
+      throw new Error(`Payment amount (₹${paidAmount}) does not match bill total (₹${totalAmount})`);
     }
 
+    const dueAmount = totalAmount - paidAmount;
+
     await bill.update(
-      { total_amount: totalAmount },
+      {
+        total_amount: totalAmount,
+        paid_amount: paidAmount,
+        due_amount: dueAmount,
+        status:
+          dueAmount === 0
+            ? "paid"
+            : paidAmount === 0
+            ? "unpaid"
+            : "partial",
+      },
       { transaction }
     );
+
 
     await transaction.commit();
 
@@ -323,10 +343,12 @@ export const createBill = async (req, res) => {
       message: "Bill created successfully",
       bill_id: bill.id,
       total_amount: totalAmount,
+      data: { bill_id: bill.id, total_amount: totalAmount },
     });
 
   } catch (error) {
     await transaction.rollback();
+    console.error('Bill creation error:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -456,7 +478,7 @@ export const payDue = async (req, res) => {
     const bill = await Bill.findOne({
       where: { id, shop_id: req.user.shop_id },
     });
-    if (!bill || bill.status === "cancelled") {
+    if (!bill || bill.status === "CANCELLED") {
       return res.status(400).json({ message: "Invalid bill" });
     }
 
@@ -469,11 +491,58 @@ export const payDue = async (req, res) => {
 
     bill.paid_amount += amount;
     bill.due_amount -= amount;
-    bill.status = bill.due_amount <= 0 ? "paid" : "partial";
+    bill.status = bill.due_amount <= 0 ? "PAID" : "PARTIAL";
     await bill.save();
 
     res.json({ message: "Due payment recorded", bill });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+};
+
+export const getRecentBills = async (req, res) => {
+  try {
+    const bills = await Bill.findAll({
+      where: { shop_id: req.user.shop_id },
+      order: [["createdAt", "DESC"]],
+      limit: 10,
+      attributes: [
+        "id",
+        "bill_number",
+        "total_amount",
+        "status",
+        "createdAt",
+      ],
+    });
+
+    res.json(bills);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const getBillStats = async (req, res) => {
+  try {
+    const shopId = req.user.shop_id;
+
+    const total = await Bill.count({
+      where: { shop_id: shopId },
+    });
+
+    const paid = await Bill.count({
+      where: { shop_id: shopId, status: "PAID" },
+    });
+
+    const pending = await Bill.count({
+      where: { shop_id: shopId, status: "PARTIAL" },
+    });
+
+    res.json({
+      total,
+      paid,
+      pending,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 };

@@ -38,16 +38,23 @@ export const addProduct = async (req, res) => {
  */
 export const getProducts = async (req, res) => {
   try {
+    console.log("REQ.USER:", req.user);
+
+    if (!req.user) {
+      return res.status(400).json({ message: "req.user missing" });
+    }
+
     const products = await Product.findAll({
       where: { shop_id: req.user.shop_id },
-      order: [["id", "DESC"]],
     });
 
     res.json(products);
   } catch (error) {
+    console.error("GET PRODUCTS ERROR:", error);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 /**
  * ✏️ UPDATE PRODUCT

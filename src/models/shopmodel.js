@@ -21,7 +21,17 @@ const shop = sequelize.define('shop', {
     subscription_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
-    }
+    },
+    upi_id: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    },
+
+    upi_name: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    },
+
 });
 
 export default shop;
