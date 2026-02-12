@@ -30,6 +30,11 @@ const Product = sequelize.define("Product", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+
+  shop_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  }
 });
 
 // ✅ CORRECT RELATION DEFINITIONS
