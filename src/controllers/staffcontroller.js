@@ -62,8 +62,16 @@ export const getAllStaff = async (req, res) => {
 export const updateStaff = async (req, res) => {
   try {
     const { id } = req.params;
+    const { name, email, password, isActive } = req.body;
 
-    const updated = await User.update(req.body, {
+    let updateData = { name, email, isActive };
+
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateData.password = hashedPassword;
+    }
+
+    const updated = await User.update(updateData, {
       where: {
         id,
         role: "staff",
@@ -80,6 +88,7 @@ export const updateStaff = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 /**
  * 🔒 DEACTIVATE STAFF (SOFT DELETE)

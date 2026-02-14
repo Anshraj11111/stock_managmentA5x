@@ -8,13 +8,16 @@ export const getShopDetails = async (req, res) => {
     const shop = req.shop; // shopMiddleware se aaya
 
     res.json({
-      id: shop.id,
-      shop_name: shop.shop_name,
-      category: shop.category,
-      trial_end_date: shop.trial_end_date,
-      subscription_active: shop.subscription_active,
-      createdAt: shop.createdAt,
-    });
+    id: shop.id,
+    shop_name: shop.shop_name,
+    category: shop.category,
+    trial_end_date: shop.trial_end_date,
+    subscription_active: shop.subscription_active,
+    upi_id: shop.upi_id,        // ✅ ADD THIS
+    upi_name: shop.upi_name,    // ✅ ADD THIS
+    createdAt: shop.createdAt,
+  });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -25,16 +28,19 @@ export const getShopDetails = async (req, res) => {
  */
 export const updateShopDetails = async (req, res) => {
   try {
-    const { shop_name, category } = req.body;
+    const { shop_name, category, upi_id, upi_name } = req.body;
 
-    if (!shop_name && !category) {
-      return res
-        .status(400)
-        .json({ message: "Nothing to update" });
+    if (!shop_name && !category && !upi_id && !upi_name) {
+      return res.status(400).json({ message: "Nothing to update" });
     }
 
     await Shop.update(
-      { shop_name, category },
+      {
+        shop_name,
+        category,
+        upi_id,
+        upi_name
+      },
       { where: { id: req.shop.id } }
     );
 

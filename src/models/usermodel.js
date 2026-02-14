@@ -34,7 +34,13 @@ const User = sequelize.define("User", {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
     field: "is_active",
-  }
+  },
+
+  shop_id: {
+  type: DataTypes.INTEGER,
+  allowNull: false,
+},
+
 });
 
 // Relations
