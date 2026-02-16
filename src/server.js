@@ -12,16 +12,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load .env from backend root
-dotenv.config({ path: path.join(__dirname, "../.env") });
+dotenv.config();
 
 // 2️⃣ Environment safety check
-const REQUIRED_ENVS = [
-  "DB_HOST",
-  "DB_USER",
-  "DB_PASSWORD",
-  "DB_NAME",
-  "JWT_SECRET",
+
+  const REQUIRED_ENVS = [
+  "DATABASE_URL",
+  "JWT_SECRET"
 ];
+
+
 
 for (const key of REQUIRED_ENVS) {
   if (!process.env[key]) {
@@ -54,7 +54,7 @@ const startServer = async () => {
       // await sequelize.sync({ alter: true });
 
       // ✅ Safe sync
-      await sequelize.sync();
+      // await sequelize.sync();
       console.log("🗄️ Database synced (alter mode)");
     }
 
