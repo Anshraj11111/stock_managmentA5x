@@ -24,16 +24,13 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "http://localhost:5173",
-  "https://stock-managementfrontend.vercel.app"
+  "https://stock-managementfrontend.vercel.app",
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow Postman etc
-
-      if (allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
@@ -44,6 +41,8 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+/* =========================================== */
 
 app.use(express.json());
 
