@@ -20,10 +20,26 @@ import { apiLimiter, authLimiter } from "./middlewares/ratemiddleware.js";
 
 const app = express();
 
+/* ================= CORS FIX ================= */
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://stock-managementfrontend.vercel.app"
+];
+
 app.use(
   cors({
-    origin: "http://localhost:3000", // frontend URL
-    credentials: true,               // allow cookies / auth
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow Postman etc
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
