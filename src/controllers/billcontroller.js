@@ -169,6 +169,8 @@ import Bill from "../models/billmodel.js";
 import BillItem from "../models/billItemmodel.js";
 import Product from "../models/productmodel.js";
 import Payment from "../models/paymentmodel.js";
+import { clearShopCache } from "../middlewares/cache.js";
+import { Op } from "sequelize";
 
 /**
  * ======================================
@@ -183,16 +185,24 @@ export const previewBill = async (req, res) => {
       return res.status(400).json({ message: "Items are required" });
     }
 
+    // ✅ FIX N+1: Batch fetch all products at once
+    const productIds = items.map(i => i.product_id);
+    const products = await Product.findAll({
+      where: {
+        id: productIds,
+        shop_id: req.user.shop_id,
+      },
+      attributes: ['id', 'product_name', 'selling_price', 'stock_quantity']
+    });
+
+    // Create a map for O(1) lookup
+    const productMap = new Map(products.map(p => [p.id, p]));
+
     let totalAmount = 0;
     const billItems = [];
 
     for (const item of items) {
-      const product = await Product.findOne({
-        where: {
-          id: item.product_id,
-          shop_id: req.user.shop_id,
-        },
-      });
+      const product = productMap.get(item.product_id);
 
       if (!product) {
         return res.status(404).json({
@@ -248,7 +258,47 @@ export const createBill = async (req, res) => {
       return res.status(400).json({ message: "No payments provided" });
     }
 
+    // ✅ OPTIMIZATION: Batch fetch all products at once
+    const productIds = items.map(i => i.product_id);
+    const products = await Product.findAll({
+      where: { 
+        id: productIds, 
+        shop_id: shopId 
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+      raw: true
+    });
+
+    // Create product map for O(1) lookup
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    // Validate all products and calculate total
     let totalAmount = 0;
+    const billItemsToCreate = [];
+    const stockUpdates = [];
+
+    for (const item of items) {
+      const product = productMap.get(item.product_id);
+
+      if (!product || product.stock_quantity < item.quantity) {
+        throw new Error(`Insufficient stock for product ID ${item.product_id}`);
+      }
+
+      const itemTotal = product.selling_price * item.quantity;
+      totalAmount += itemTotal;
+
+      billItemsToCreate.push({
+        product_id: product.id,
+        quantity: item.quantity,
+        price: product.selling_price,
+      });
+
+      stockUpdates.push({
+        id: product.id,
+        newStock: product.stock_quantity - item.quantity
+      });
+    }
 
     // 🧾 Create Bill
     const bill = await Bill.create(
@@ -262,56 +312,42 @@ export const createBill = async (req, res) => {
       { transaction }
     );
 
-    // 📦 Bill Items + Stock Update
-    for (const item of items) {
-      const product = await Product.findOne({
-        where: { id: item.product_id, shop_id: shopId },
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
+    // ✅ OPTIMIZATION: Batch create bill items
+    const billItemsWithBillId = billItemsToCreate.map(item => ({
+      ...item,
+      bill_id: bill.id
+    }));
+    await BillItem.bulkCreate(billItemsWithBillId, { transaction });
 
-      if (!product || product.stock_quantity < item.quantity) {
-        throw new Error(`Insufficient stock for product ID ${item.product_id}`);
-      }
-
-      const itemTotal = product.selling_price * item.quantity;
-      totalAmount += itemTotal;
-
-      await BillItem.create(
-        {
-          bill_id: bill.id,
-          product_id: product.id,
-          quantity: item.quantity,
-          price: product.selling_price,
-        },
-        { transaction }
-      );
-
-      await product.update(
-        {
-          stock_quantity: product.stock_quantity - item.quantity,
-        },
-        { transaction }
+    // ✅ OPTIMIZATION: Batch update stock
+    for (const update of stockUpdates) {
+      await Product.update(
+        { stock_quantity: update.newStock },
+        { 
+          where: { id: update.id },
+          transaction 
+        }
       );
     }
 
-    // 💰 Handle Payments (cash / upi / card / mixed)
+    // 💰 Handle Payments
     let paidAmount = 0;
+    const paymentsToCreate = [];
 
     for (const pay of payments) {
       const amount = parseFloat(pay.amount) || 0;
       paidAmount += amount;
 
-      await Payment.create(
-        {
-          bill_id: bill.id,
-          amount: amount,
-          payment_mode: pay.mode,
-          reference_id: pay.reference_id || null,
-        },
-        { transaction }
-      );
+      paymentsToCreate.push({
+        bill_id: bill.id,
+        amount: amount,
+        payment_mode: pay.mode,
+        reference_id: pay.reference_id || null,
+      });
     }
+
+    // ✅ OPTIMIZATION: Batch create payments
+    await Payment.bulkCreate(paymentsToCreate, { transaction });
 
     // Compare with tolerance for floating point issues
     const tolerance = 0.01;
@@ -336,8 +372,10 @@ export const createBill = async (req, res) => {
       { transaction }
     );
 
-
     await transaction.commit();
+
+    // Clear cache for this shop
+    clearShopCache(shopId);
 
     res.status(201).json({
       message: "Bill created successfully",
@@ -425,7 +463,13 @@ export const getBillById = async (req, res) => {
         shop_id: req.user.shop_id,
       },
       include: [
-        { model: BillItem },
+        { 
+          model: BillItem,
+          include: [{ 
+            model: Product, 
+            attributes: ['product_name', 'selling_price'] 
+          }]
+        },
         { model: Payment },
       ],
     });
@@ -525,23 +569,31 @@ export const getBillStats = async (req, res) => {
   try {
     const shopId = req.user.shop_id;
 
-    const total = await Bill.count({
+    // ✅ Optimized: Single query with aggregation
+    const stats = await Bill.findAll({
       where: { shop_id: shopId },
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['status'],
+      raw: true
     });
 
-    const paid = await Bill.count({
-      where: { shop_id: shopId, status: "PAID" },
+    const result = {
+      total: 0,
+      paid: 0,
+      pending: 0
+    };
+
+    stats.forEach(s => {
+      const count = parseInt(s.count) || 0;
+      result.total += count;
+      if (s.status === 'PAID') result.paid = count;
+      if (s.status === 'PARTIAL') result.pending = count;
     });
 
-    const pending = await Bill.count({
-      where: { shop_id: shopId, status: "PARTIAL" },
-    });
-
-    res.json({
-      total,
-      paid,
-      pending,
-    });
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

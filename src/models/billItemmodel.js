@@ -13,9 +13,16 @@ const BillItem = sequelize.define("BillItem", {
         type: DataTypes.FLOAT,
         allowNull: false,
     }
+}, {
+  indexes: [
+    { fields: ['bill_id'] },
+    { fields: ['product_id'] }
+  ]
 });
     
 BillItem.belongsTo(Bill, { foreignKey: "bill_id" });
 BillItem.belongsTo(Product, { foreignKey: "product_id" });
+Bill.hasMany(BillItem, { foreignKey: "bill_id" });
+Product.hasMany(BillItem, { foreignKey: "product_id" });
 
 export default BillItem;

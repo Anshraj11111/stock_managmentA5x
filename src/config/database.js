@@ -31,12 +31,22 @@ if (!process.env.DATABASE_URL) {
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "mysql",
   logging: false,
+  pool: {
+    max: 10,        // Maximum connections in pool
+    min: 2,         // Minimum connections in pool
+    acquire: 30000, // Max time (ms) to get connection
+    idle: 10000     // Max idle time before release
+  },
   dialectOptions: {
     ssl: {
       require: true,
       rejectUnauthorized: false,
     },
   },
+  define: {
+    charset: 'utf8',
+    collate: 'utf8_general_ci'
+  }
 });
 
 export default sequelize;

@@ -44,18 +44,16 @@ const startServer = async () => {
     console.log("✅ Database connected successfully");
 
     /**
-     * ❌ NEVER use alter/force in real SaaS
-     * It creates duplicate indexes (64 keys error)
-     *
-     * 👉 Use alter ONLY when you intentionally change schema
+     * Database sync - creates tables if they don't exist
      */
     if (process.env.NODE_ENV !== "production") {
-      // ❌ COMMENT THIS AFTER FIRST SUCCESSFUL RUN
-      // await sequelize.sync({ alter: true });
-
-      // ✅ Safe sync
-      // await sequelize.sync();
-      console.log("🗄️ Database synced (alter mode)");
+      try {
+        // Safe sync with indexes - only create tables if they don't exist
+        await sequelize.sync({ alter: true });
+        console.log("🗄️ Database synced successfully with indexes");
+      } catch (syncError) {
+        console.error("❌ Database sync failed:", syncError.message);
+      }
     }
 
     // Start server

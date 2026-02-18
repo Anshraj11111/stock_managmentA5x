@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import compression from "compression";
+import { performanceLogger } from "./middlewares/performanceLogger.js";
 
 import "./models/shopmodel.js";
 import "./models/usermodel.js";
@@ -20,6 +22,12 @@ import invoiceRoutes from "./routes/invoiceRoutes.js";
 import { apiLimiter, authLimiter } from "./middlewares/ratemiddleware.js";
 
 const app = express();
+
+/* ================= COMPRESSION ================= */
+app.use(compression()); // Compress all responses
+
+/* ================= PERFORMANCE LOGGING ================= */
+app.use(performanceLogger); // Log slow requests
 
 /* ================= CORS FIX ================= */
 

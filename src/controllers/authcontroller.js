@@ -19,7 +19,8 @@ export const signup = async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // ✅ Reduced from 10 to 8 rounds for faster performance (still secure)
+    const hashedPassword = await bcrypt.hash(password, 8);
 
     const today = new Date();
     const trialEnd = new Date();

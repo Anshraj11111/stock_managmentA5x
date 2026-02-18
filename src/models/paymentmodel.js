@@ -12,6 +12,12 @@ const Payment = sequelize.define("Payment", {
     type: DataTypes.FLOAT,
     allowNull: false,
   },
+}, {
+  indexes: [
+    { fields: ['bill_id'] },
+    { fields: ['payment_mode'] },
+    { fields: ['createdAt'] }
+  ]
 });
 
 Payment.belongsTo(Bill, { foreignKey: "bill_id" });

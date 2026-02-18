@@ -1,4 +1,5 @@
 import Product from "../models/productmodel.js";
+import { clearShopCache } from "../middlewares/cache.js";
 
 /**
  * ➕ ADD PRODUCT
@@ -21,8 +22,11 @@ export const addProduct = async (req, res) => {
       purchase_price,
       selling_price,
       stock_quantity,
-      shop_id: req.user.shop_id, // JWT middleware se aayega
+      shop_id: req.user.shop_id,
     });
+
+    // Clear cache for this shop
+    clearShopCache(req.user.shop_id);
 
     res.status(201).json({
       message: "Product added successfully",
@@ -38,14 +42,16 @@ export const addProduct = async (req, res) => {
  */
 export const getProducts = async (req, res) => {
   try {
-    console.log("REQ.USER:", req.user);
-
     if (!req.user) {
       return res.status(400).json({ message: "req.user missing" });
     }
 
+    // ✅ Optimized: Only select needed fields, use index
     const products = await Product.findAll({
       where: { shop_id: req.user.shop_id },
+      attributes: ['id', 'product_name', 'purchase_price', 'selling_price', 'stock_quantity'],
+      order: [['product_name', 'ASC']],
+      raw: true // Faster serialization
     });
 
     res.json(products);
@@ -74,6 +80,9 @@ export const updateProduct = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
+    // Clear cache for this shop
+    clearShopCache(req.user.shop_id);
+
     res.json({ message: "Product updated successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -97,6 +106,9 @@ export const deleteProduct = async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ message: "Product not found" });
     }
+
+    // Clear cache for this shop
+    clearShopCache(req.user.shop_id);
 
     res.json({ message: "Product deleted successfully" });
   } catch (error) {

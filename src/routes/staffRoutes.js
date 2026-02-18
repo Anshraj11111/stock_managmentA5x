@@ -1,6 +1,7 @@
 import express from "express";
 import authMiddleware from "../middlewares/authmiddleware.js";
 import allowRoles from "../middlewares/rolemiddleware.js";
+import { cacheMiddleware } from "../middlewares/cache.js";
 import {
   addStaff,
   getAllStaff,
@@ -19,7 +20,7 @@ router.use(shopMiddleware);
 router.use(allowRoles("owner"));
 
 router.post("/", addStaff);
-router.get("/", getAllStaff);
+router.get("/", cacheMiddleware(10), getAllStaff); // Cache for 10 seconds
 router.put("/:id", updateStaff);
 router.delete("/:id", deleteStaff);
 

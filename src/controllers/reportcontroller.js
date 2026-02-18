@@ -1,4 +1,5 @@
 import { Op } from "sequelize";
+import sequelize from "../config/database.js";
 import Bill from "../models/billmodel.js";
 import Payment from "../models/paymentmodel.js";
 
@@ -14,54 +15,52 @@ export const dailySalesReport = async (req, res) => {
     const end = new Date();
     end.setHours(23, 59, 59, 999);
 
-    // Bills (exclude cancelled)
-    const bills = await Bill.findAll({
+    // ✅ Optimized: Use aggregation with indexes
+    const billStats = await Bill.findOne({
       where: {
         shop_id: req.user.shop_id,
-        status: { [Op.ne]: "cancelled" },
+        status: { [Op.ne]: "CANCELLED" },
         createdAt: { [Op.between]: [start, end] },
       },
-    });
-
-    // Payments for those bills
-    const payments = await Payment.findAll({
-      include: [
-        {
-          model: Bill,
-          where: {
-            shop_id: req.user.shop_id,
-            status: { [Op.ne]: "cancelled" },
-          },
-        },
+      attributes: [
+        [sequelize.fn('COUNT', sequelize.col('id')), 'total_bills'],
+        [sequelize.fn('SUM', sequelize.col('total_amount')), 'total_sales'],
+        [sequelize.fn('SUM', sequelize.col('paid_amount')), 'received_amount'],
+        [sequelize.fn('SUM', sequelize.col('due_amount')), 'due_amount'],
       ],
-      where: {
-        createdAt: { [Op.between]: [start, end] },
-      },
-    });
-
-    let totalSales = 0;
-    let received = 0;
-    let due = 0;
-
-    bills.forEach((b) => {
-      totalSales += b.total_amount || 0;
-      received += b.paid_amount || 0;
-      due += b.due_amount || 0;
+      raw: true
     });
 
     // Payment mode breakup
+    const paymentBreakup = await Payment.findAll({
+      include: [{
+        model: Bill,
+        where: {
+          shop_id: req.user.shop_id,
+          status: { [Op.ne]: "CANCELLED" },
+          createdAt: { [Op.between]: [start, end] },
+        },
+        attributes: []
+      }],
+      attributes: [
+        'payment_mode',
+        [sequelize.fn('SUM', sequelize.col('amount')), 'total']
+      ],
+      group: ['payment_mode'],
+      raw: true
+    });
+
     const paymentModes = {};
-    payments.forEach((p) => {
-      paymentModes[p.payment_mode] =
-        (paymentModes[p.payment_mode] || 0) + p.amount;
+    paymentBreakup.forEach(p => {
+      paymentModes[p.payment_mode] = parseFloat(p.total) || 0;
     });
 
     res.json({
       date: start.toISOString().slice(0, 10),
-      total_bills: bills.length,
-      total_sales: totalSales,
-      received_amount: received,
-      due_amount: due,
+      total_bills: parseInt(billStats.total_bills) || 0,
+      total_sales: parseFloat(billStats.total_sales) || 0,
+      received_amount: parseFloat(billStats.received_amount) || 0,
+      due_amount: parseFloat(billStats.due_amount) || 0,
       payment_breakup: paymentModes,
     });
   } catch (error) {
@@ -86,31 +85,29 @@ export const monthlySalesReport = async (req, res) => {
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0, 23, 59, 59);
 
-    const bills = await Bill.findAll({
+    // ✅ Optimized: Use aggregation
+    const billStats = await Bill.findOne({
       where: {
         shop_id: req.user.shop_id,
-        status: { [Op.ne]: "cancelled" },
+        status: { [Op.ne]: "CANCELLED" },
         createdAt: { [Op.between]: [start, end] },
       },
-    });
-
-    let totalSales = 0;
-    let received = 0;
-    let due = 0;
-
-    bills.forEach((b) => {
-      totalSales += b.total_amount || 0;
-      received += b.paid_amount || 0;
-      due += b.due_amount || 0;
+      attributes: [
+        [sequelize.fn('COUNT', sequelize.col('id')), 'total_bills'],
+        [sequelize.fn('SUM', sequelize.col('total_amount')), 'total_sales'],
+        [sequelize.fn('SUM', sequelize.col('paid_amount')), 'received_amount'],
+        [sequelize.fn('SUM', sequelize.col('due_amount')), 'due_amount'],
+      ],
+      raw: true
     });
 
     res.json({
       month,
       year,
-      total_bills: bills.length,
-      total_sales: totalSales,
-      received_amount: received,
-      due_amount: due,
+      total_bills: parseInt(billStats.total_bills) || 0,
+      total_sales: parseFloat(billStats.total_sales) || 0,
+      received_amount: parseFloat(billStats.received_amount) || 0,
+      due_amount: parseFloat(billStats.due_amount) || 0,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
