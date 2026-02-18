@@ -8,6 +8,7 @@ import "./models/billmodel.js";
 import "./models/billItemmodel.js";
 import "./models/paymentmodel.js";
 
+// import paymentRoutes from "./routes/paymentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import staffRoutes from "./routes/staffRoutes.js";
@@ -55,6 +56,7 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/bills", billRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/invoices", invoiceRoutes);
+// app.use("/api/payment", paymentRoutes);
 
 /* ============== RATE LIMITER LAST ============== */
 app.use("/api", apiLimiter);

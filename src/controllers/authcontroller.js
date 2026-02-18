@@ -19,21 +19,22 @@ export const signup = async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // 🔐 password hash
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 🏪 create shop with trial
+    const today = new Date();
     const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + 7); // 7 days trial
+    trialEnd.setDate(today.getDate() + 7);
 
+    // ✅ FIX — store shop in variable
     const shop = await Shop.create({
       shop_name,
       category,
+      trial_start_date: today,
       trial_end_date: trialEnd,
       subscription_active: false,
+      plan_type: "trial",
     });
 
-    // 👤 create owner
     const owner = await User.create({
       name,
       email,
@@ -43,7 +44,6 @@ export const signup = async (req, res) => {
       isActive: true,
     });
 
-    // 🔑 token
     const token = jwt.sign(
       {
         user_id: owner.id,
@@ -55,15 +55,17 @@ export const signup = async (req, res) => {
     );
 
     res.status(201).json({
+      success: true,  // ✅ add this
       message: "Signup successful",
       token,
-      shop_id: shop.id,
-      trial_end_date: shop.trial_end_date,
+      plan_type: "trial"
     });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
 /**
  * LOGIN (OWNER + STAFF)
  */
@@ -92,9 +94,11 @@ export const login = async (req, res) => {
     );
 
     res.json({
+      success: true,
       message: "Login successful",
       token,
     });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
