@@ -41,6 +41,12 @@ const User = sequelize.define("User", {
   allowNull: false,
 },
 
+}, {
+  indexes: [
+    { fields: ['shop_id'] },
+    { fields: ['email'] },
+    { fields: ['role'] }
+  ]
 });
 
 // Relations

@@ -1,6 +1,7 @@
 import express from "express";
 import authMiddleware from "../middlewares/authmiddleware.js";
-import shopMiddleware from "../middlewares/shopmiddleware.js"
+import shopMiddleware from "../middlewares/shopmiddleware.js";
+import { cacheMiddleware } from "../middlewares/cache.js";
 import {
   addProduct,
   getProducts,
@@ -15,7 +16,7 @@ router.use(authMiddleware);
 router.use(shopMiddleware);
 
 router.post("/", addProduct);
-router.get("/", getProducts);
+router.get("/", cacheMiddleware(10), getProducts); // Cache for 10 seconds
 router.put("/:id", updateProduct);
 router.delete("/:id", deleteProduct);
 

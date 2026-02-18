@@ -92,6 +92,13 @@ const Bill = sequelize.define("Bill", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+}, {
+  indexes: [
+    { fields: ['shop_id'] },
+    { fields: ['status'] },
+    { fields: ['createdAt'] },
+    { fields: ['shop_id', 'status', 'createdAt'] }
+  ]
 });
 
 Bill.belongsTo(Shop, { foreignKey: "shop_id" });

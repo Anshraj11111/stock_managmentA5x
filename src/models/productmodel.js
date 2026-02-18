@@ -7,7 +7,7 @@ import Shop from "./shopmodel.js";
 const Product = sequelize.define("Product", {
   id: {
     type: DataTypes.INTEGER,
-    autoIncrement: true,   // ✅ FIXED
+    autoIncrement: true,
     primaryKey: true,
   },
 
@@ -35,6 +35,12 @@ const Product = sequelize.define("Product", {
     type: DataTypes.INTEGER,
     allowNull: false,
   }
+}, {
+  indexes: [
+    { fields: ['shop_id'] },
+    { fields: ['product_name'] },
+    { fields: ['shop_id', 'stock_quantity'] }
+  ]
 });
 
 // ✅ CORRECT RELATION DEFINITIONS
