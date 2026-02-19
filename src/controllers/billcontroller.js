@@ -179,10 +179,17 @@ import { Op } from "sequelize";
  */
 export const previewBill = async (req, res) => {
   try {
-    const { items } = req.body;
+    const { items, gst_percentage } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ message: "Items are required" });
+    }
+
+    // ✅ Validate GST percentage if provided
+    if (gst_percentage !== undefined && gst_percentage !== null) {
+      if (gst_percentage < 0 || gst_percentage > 28) {
+        return res.status(400).json({ message: "GST percentage must be between 0 and 28" });
+      }
     }
 
     // ✅ FIX N+1: Batch fetch all products at once
@@ -198,7 +205,7 @@ export const previewBill = async (req, res) => {
     // Create a map for O(1) lookup
     const productMap = new Map(products.map(p => [p.id, p]));
 
-    let totalAmount = 0;
+    let subtotal = 0;
     const billItems = [];
 
     for (const item of items) {
@@ -217,7 +224,7 @@ export const previewBill = async (req, res) => {
       }
 
       const itemTotal = product.selling_price * item.quantity;
-      totalAmount += itemTotal;
+      subtotal += itemTotal;
 
       billItems.push({
         product_id: product.id,
@@ -228,7 +235,19 @@ export const previewBill = async (req, res) => {
       });
     }
 
+    // ✅ Calculate GST if provided
+    let gstAmount = 0;
+    let totalAmount = subtotal;
+
+    if (gst_percentage !== undefined && gst_percentage !== null && gst_percentage > 0) {
+      gstAmount = parseFloat(((subtotal * gst_percentage) / 100).toFixed(2));
+      totalAmount = parseFloat((subtotal + gstAmount).toFixed(2));
+    }
+
     res.json({
+      subtotal: subtotal,
+      gst_percentage: gst_percentage || null,
+      gst_amount: gstAmount > 0 ? gstAmount : null,
       total_amount: totalAmount,
       items: billItems,
     });
@@ -246,7 +265,7 @@ export const createBill = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { items, payments } = req.body;
+    const { items, payments, customer_name, customer_phone, gst_percentage } = req.body;
     const userId = req.user.user_id;
     const shopId = req.user.shop_id;
 
@@ -256,6 +275,18 @@ export const createBill = async (req, res) => {
 
     if (!payments || payments.length === 0) {
       return res.status(400).json({ message: "No payments provided" });
+    }
+
+    // ✅ Validate customer phone if provided
+    if (customer_phone && !/^[0-9]{10}$/.test(customer_phone)) {
+      return res.status(400).json({ message: "Phone number must be exactly 10 digits" });
+    }
+
+    // ✅ Validate GST percentage if provided
+    if (gst_percentage !== undefined && gst_percentage !== null) {
+      if (gst_percentage < 0 || gst_percentage > 28) {
+        return res.status(400).json({ message: "GST percentage must be between 0 and 28" });
+      }
     }
 
     // ✅ OPTIMIZATION: Batch fetch all products at once
@@ -273,8 +304,8 @@ export const createBill = async (req, res) => {
     // Create product map for O(1) lookup
     const productMap = new Map(products.map(p => [p.id, p]));
 
-    // Validate all products and calculate total
-    let totalAmount = 0;
+    // Validate all products and calculate subtotal
+    let subtotal = 0;
     const billItemsToCreate = [];
     const stockUpdates = [];
 
@@ -286,7 +317,7 @@ export const createBill = async (req, res) => {
       }
 
       const itemTotal = product.selling_price * item.quantity;
-      totalAmount += itemTotal;
+      subtotal += itemTotal;
 
       billItemsToCreate.push({
         product_id: product.id,
@@ -300,11 +331,25 @@ export const createBill = async (req, res) => {
       });
     }
 
-    // 🧾 Create Bill
+    // ✅ Calculate GST if provided
+    let gstAmount = 0;
+    let totalAmount = subtotal;
+
+    if (gst_percentage !== undefined && gst_percentage !== null && gst_percentage > 0) {
+      gstAmount = parseFloat(((subtotal * gst_percentage) / 100).toFixed(2));
+      totalAmount = parseFloat((subtotal + gstAmount).toFixed(2));
+    }
+
+    // 🧾 Create Bill with new fields
     const bill = await Bill.create(
       {
         bill_number: `BILL-${Date.now()}`,
-        total_amount: 0,
+        subtotal_amount: subtotal,
+        gst_percentage: gst_percentage || null,
+        gst_amount: gstAmount > 0 ? gstAmount : null,
+        total_amount: totalAmount,
+        customer_name: customer_name || null,
+        customer_phone: customer_phone || null,
         status: "PAID",
         created_by: userId,
         shop_id: shopId,
@@ -359,7 +404,6 @@ export const createBill = async (req, res) => {
 
     await bill.update(
       {
-        total_amount: totalAmount,
         paid_amount: paidAmount,
         due_amount: dueAmount,
         status:
@@ -380,8 +424,20 @@ export const createBill = async (req, res) => {
     res.status(201).json({
       message: "Bill created successfully",
       bill_id: bill.id,
+      subtotal: subtotal,
+      gst_amount: gstAmount > 0 ? gstAmount : null,
+      gst_percentage: gst_percentage || null,
       total_amount: totalAmount,
-      data: { bill_id: bill.id, total_amount: totalAmount },
+      customer: customer_name || customer_phone ? {
+        name: customer_name,
+        phone: customer_phone
+      } : null,
+      data: { 
+        bill_id: bill.id, 
+        total_amount: totalAmount,
+        subtotal: subtotal,
+        gst_amount: gstAmount > 0 ? gstAmount : null,
+      },
     });
 
   } catch (error) {
