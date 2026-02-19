@@ -9,6 +9,7 @@ import "./models/productmodel.js";
 import "./models/billmodel.js";
 import "./models/billItemmodel.js";
 import "./models/paymentmodel.js";
+import "./models/adminmodel.js";
 
 // import paymentRoutes from "./routes/paymentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -18,6 +19,7 @@ import shopRoutes from "./routes/shopRoutes.js";
 import billRoutes from "./routes/billRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import invoiceRoutes from "./routes/invoiceRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 import { apiLimiter, authLimiter } from "./middlewares/ratemiddleware.js";
 
@@ -33,6 +35,7 @@ app.use(performanceLogger); // Log slow requests
 
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://localhost:3001",
   "https://stock-managmentfrontend.vercel.app",
   
 ];
@@ -56,6 +59,9 @@ app.use(express.json());
 
 /* ================= AUTH ================= */
 app.use("/api/auth", authLimiter, authRoutes);
+
+/* ================= ADMIN ROUTES ================= */
+app.use("/api", adminRoutes);
 
 /* ============== PROTECTED ROUTES ============== */
 app.use("/api/shop", shopRoutes);
