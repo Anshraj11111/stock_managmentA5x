@@ -92,6 +92,44 @@ const Bill = sequelize.define("Bill", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+
+  // ✅ NEW FIELDS - Professional Billing Enhancement
+  customer_name: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    defaultValue: null,
+  },
+
+  customer_phone: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    defaultValue: null,
+    validate: {
+      is: /^[0-9]{10}$/  // Exactly 10 digits
+    }
+  },
+
+  subtotal_amount: {
+    type: DataTypes.FLOAT,
+    allowNull: false,
+    defaultValue: 0,
+  },
+
+  gst_percentage: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+    defaultValue: null,
+    validate: {
+      min: 0,
+      max: 28  // Max GST in India
+    }
+  },
+
+  gst_amount: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+    defaultValue: null,
+  },
 }, {
   indexes: [
     { fields: ['shop_id'] },
