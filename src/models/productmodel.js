@@ -27,8 +27,20 @@ const Product = sequelize.define("Product", {
   },
 
   stock_quantity: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING, // Changed from INTEGER to STRING to allow text like "10 kg", "5 pieces"
     allowNull: false,
+  },
+
+  stock_unit: {
+    type: DataTypes.STRING, // Unit like "kg", "pieces", "liters", etc.
+    allowNull: true,
+    defaultValue: 'pieces',
+  },
+
+  low_stock_threshold: {
+    type: DataTypes.INTEGER, // Customizable threshold for each product
+    allowNull: true,
+    defaultValue: 10,
   },
 
   shop_id: {

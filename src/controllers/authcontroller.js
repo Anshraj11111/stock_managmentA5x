@@ -8,7 +8,7 @@ import Shop from "../models/shopmodel.js";
  */
 export const signup = async (req, res) => {
   try {
-    const { name, email, password, shop_name, category } = req.body;
+    const { name, email, password, shop_name, category, owner_phone, address } = req.body;
 
     if (!name || !email || !password || !shop_name) {
       return res.status(400).json({ message: "All fields are required" });
@@ -30,6 +30,8 @@ export const signup = async (req, res) => {
     const shop = await Shop.create({
       shop_name,
       category,
+      owner_phone,
+      address,
       trial_start_date: today,
       trial_end_date: trialEnd,
       subscription_active: false,
@@ -48,6 +50,7 @@ export const signup = async (req, res) => {
     const token = jwt.sign(
       {
         user_id: owner.id,
+        name: owner.name,
         role: owner.role,
         shop_id: shop.id,
       },
@@ -87,6 +90,7 @@ export const login = async (req, res) => {
     const token = jwt.sign(
       {
         user_id: user.id,
+        name: user.name,
         role: user.role,
         shop_id: user.shop_id,
       },
