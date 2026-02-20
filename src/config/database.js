@@ -34,10 +34,11 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
   pool: {
     max: 10,        // Maximum connections in pool
     min: 2,         // Minimum connections in pool
-    acquire: 30000, // Max time (ms) to get connection
+    acquire: 60000, // Max time (ms) to get connection - INCREASED
     idle: 10000     // Max idle time before release
   },
   dialectOptions: {
+    connectTimeout: 60000, // Connection timeout - INCREASED
     ssl: {
       require: true,
       rejectUnauthorized: false,
