@@ -28,17 +28,24 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+// Check if using local database
+const isLocal = process.env.DATABASE_URL.includes('localhost');
+
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "mysql",
   logging: false,
   pool: {
     max: 10,        // Maximum connections in pool
     min: 2,         // Minimum connections in pool
-    acquire: 60000, // Max time (ms) to get connection - INCREASED
+    acquire: 60000, // Max time (ms) to get connection
     idle: 10000     // Max idle time before release
   },
-  dialectOptions: {
-    connectTimeout: 60000, // Connection timeout - INCREASED
+  dialectOptions: isLocal ? {
+    // Local database - no SSL
+    connectTimeout: 60000,
+  } : {
+    // Remote database (Railway) - with SSL
+    connectTimeout: 60000,
     ssl: {
       require: true,
       rejectUnauthorized: false,

@@ -60,6 +60,16 @@ const Shop = sequelize.define("Shop", {
     allowNull: true,
   },
 
+  gstin: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+  pan: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
   // 🆓 Trial System
   trial_start_date: {
     type: DataTypes.DATE,
@@ -85,6 +95,19 @@ const Shop = sequelize.define("Shop", {
 
   upi_id: DataTypes.STRING,
   upi_name: DataTypes.STRING,
+
+  // Bank Details for Invoice
+  bank_name: DataTypes.STRING,
+  bank_branch: DataTypes.STRING,
+  bank_account_number: DataTypes.STRING,
+  bank_ifsc: DataTypes.STRING,
+  
+  // Signature for Invoice
+  authorized_signatory: DataTypes.STRING,
+  signature_image: DataTypes.TEXT, // Base64 encoded image
+  
+  // Terms and Conditions for Invoice
+  terms_and_conditions: DataTypes.TEXT,
 
 }, {
   timestamps: true,
