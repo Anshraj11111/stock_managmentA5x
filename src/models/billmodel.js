@@ -130,13 +130,22 @@ const Bill = sequelize.define("Bill", {
     allowNull: true,
     defaultValue: null,
   },
-}, {
-  indexes: [
-    { fields: ['shop_id'] },
-    { fields: ['status'] },
-    { fields: ['createdAt'] },
-    { fields: ['shop_id', 'status', 'createdAt'] }
-  ]
+
+  discount_percentage: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+    defaultValue: null,
+    validate: {
+      min: 0,
+      max: 100
+    }
+  },
+
+  discount_amount: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+    defaultValue: null,
+  },
 });
 
 Bill.belongsTo(Shop, { foreignKey: "shop_id" });
