@@ -54,6 +54,11 @@ const Shop = sequelize.define("Shop", {
 
   category: DataTypes.STRING,
   address: DataTypes.STRING,
+  
+  owner_phone: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
 
   // 🆓 Trial System
   trial_start_date: {
