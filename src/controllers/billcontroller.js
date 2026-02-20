@@ -179,7 +179,7 @@ import { Op } from "sequelize";
  */
 export const previewBill = async (req, res) => {
   try {
-    const { items, gst_percentage } = req.body;
+    const { items, gst_percentage, discount_type, discount_value } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ message: "Items are required" });
@@ -189,6 +189,16 @@ export const previewBill = async (req, res) => {
     if (gst_percentage !== undefined && gst_percentage !== null) {
       if (gst_percentage < 0 || gst_percentage > 28) {
         return res.status(400).json({ message: "GST percentage must be between 0 and 28" });
+      }
+    }
+
+    // ✅ Validate discount if provided
+    if (discount_type && discount_value) {
+      if (discount_type === 'percentage' && (discount_value < 0 || discount_value > 100)) {
+        return res.status(400).json({ message: "Discount percentage must be between 0 and 100" });
+      }
+      if (discount_type === 'fixed' && discount_value < 0) {
+        return res.status(400).json({ message: "Discount amount cannot be negative" });
       }
     }
 
@@ -244,10 +254,32 @@ export const previewBill = async (req, res) => {
       totalAmount = parseFloat((subtotal + gstAmount).toFixed(2));
     }
 
+    // ✅ Calculate Discount if provided
+    let discountAmount = 0;
+    if (discount_type && discount_value && discount_value > 0) {
+      const totalBeforeDiscount = totalAmount;
+      
+      if (discount_type === 'percentage') {
+        discountAmount = parseFloat(((totalBeforeDiscount * discount_value) / 100).toFixed(2));
+      } else if (discount_type === 'fixed') {
+        discountAmount = parseFloat(discount_value.toFixed(2));
+      }
+
+      // Ensure discount doesn't exceed total
+      if (discountAmount > totalBeforeDiscount) {
+        discountAmount = totalBeforeDiscount;
+      }
+
+      totalAmount = parseFloat((totalBeforeDiscount - discountAmount).toFixed(2));
+    }
+
     res.json({
       subtotal: subtotal,
       gst_percentage: gst_percentage || null,
       gst_amount: gstAmount > 0 ? gstAmount : null,
+      discount_type: discount_type || null,
+      discount_value: discount_value || null,
+      discount_amount: discountAmount > 0 ? discountAmount : null,
       total_amount: totalAmount,
       items: billItems,
     });
@@ -265,7 +297,7 @@ export const createBill = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { items, payments, customer_name, customer_phone, gst_percentage } = req.body;
+    const { items, payments, customer_name, customer_phone, gst_percentage, discount_type, discount_value } = req.body;
     const userId = req.user.user_id;
     const shopId = req.user.shop_id;
 
@@ -286,6 +318,16 @@ export const createBill = async (req, res) => {
     if (gst_percentage !== undefined && gst_percentage !== null) {
       if (gst_percentage < 0 || gst_percentage > 28) {
         return res.status(400).json({ message: "GST percentage must be between 0 and 28" });
+      }
+    }
+
+    // ✅ Validate discount if provided
+    if (discount_type && discount_value) {
+      if (discount_type === 'percentage' && (discount_value < 0 || discount_value > 100)) {
+        return res.status(400).json({ message: "Discount percentage must be between 0 and 100" });
+      }
+      if (discount_type === 'fixed' && discount_value < 0) {
+        return res.status(400).json({ message: "Discount amount cannot be negative" });
       }
     }
 
@@ -340,13 +382,39 @@ export const createBill = async (req, res) => {
       totalAmount = parseFloat((subtotal + gstAmount).toFixed(2));
     }
 
-    // 🧾 Create Bill with new fields
+    // ✅ Calculate Discount if provided
+    let discountAmount = 0;
+    let discountPercentage = null;
+
+    if (discount_type && discount_value && discount_value > 0) {
+      const totalBeforeDiscount = totalAmount;
+      
+      if (discount_type === 'percentage') {
+        discountAmount = parseFloat(((totalBeforeDiscount * discount_value) / 100).toFixed(2));
+        discountPercentage = discount_value;
+      } else if (discount_type === 'fixed') {
+        discountAmount = parseFloat(discount_value.toFixed(2));
+        // Calculate equivalent percentage for storage
+        discountPercentage = parseFloat(((discountAmount / totalBeforeDiscount) * 100).toFixed(2));
+      }
+
+      // Ensure discount doesn't exceed total
+      if (discountAmount > totalBeforeDiscount) {
+        discountAmount = totalBeforeDiscount;
+      }
+
+      totalAmount = parseFloat((totalBeforeDiscount - discountAmount).toFixed(2));
+    }
+
+    // 🧾 Create Bill with all fields
     const bill = await Bill.create(
       {
         bill_number: `BILL-${Date.now()}`,
         subtotal_amount: subtotal,
         gst_percentage: gst_percentage || null,
         gst_amount: gstAmount > 0 ? gstAmount : null,
+        discount_percentage: discountPercentage,
+        discount_amount: discountAmount > 0 ? discountAmount : null,
         total_amount: totalAmount,
         customer_name: customer_name || null,
         customer_phone: customer_phone || null,
@@ -427,6 +495,9 @@ export const createBill = async (req, res) => {
       subtotal: subtotal,
       gst_amount: gstAmount > 0 ? gstAmount : null,
       gst_percentage: gst_percentage || null,
+      discount_type: discount_type || null,
+      discount_value: discount_value || null,
+      discount_amount: discountAmount > 0 ? discountAmount : null,
       total_amount: totalAmount,
       customer: customer_name || customer_phone ? {
         name: customer_name,
@@ -437,6 +508,7 @@ export const createBill = async (req, res) => {
         total_amount: totalAmount,
         subtotal: subtotal,
         gst_amount: gstAmount > 0 ? gstAmount : null,
+        discount_amount: discountAmount > 0 ? discountAmount : null,
       },
     });
 
