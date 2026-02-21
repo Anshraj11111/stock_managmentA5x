@@ -3,13 +3,7 @@ import cors from "cors";
 import compression from "compression";
 import { performanceLogger } from "./middlewares/performanceLogger.js";
 
-import "./models/shopmodel.js";
-import "./models/usermodel.js";
-import "./models/productmodel.js";
-import "./models/billmodel.js";
-import "./models/billItemmodel.js";
-import "./models/paymentmodel.js";
-import "./models/adminmodel.js";
+// ✅ REMOVED: Model imports moved to server.js (after dotenv loads)
 
 // import paymentRoutes from "./routes/paymentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -20,6 +14,7 @@ import billRoutes from "./routes/billRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import invoiceRoutes from "./routes/invoiceRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import customerRoutes from "./routes/customerRoutes.js";
 
 import { apiLimiter, authLimiter } from "./middlewares/ratemiddleware.js";
 
@@ -70,6 +65,7 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/bills", billRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/invoices", invoiceRoutes);
+app.use("/api/customers", customerRoutes);
 // app.use("/api/payment", paymentRoutes);
 
 /* ============== RATE LIMITER LAST ============== */

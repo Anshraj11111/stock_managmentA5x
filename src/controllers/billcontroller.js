@@ -169,6 +169,8 @@ import Bill from "../models/billmodel.js";
 import BillItem from "../models/billItemmodel.js";
 import Product from "../models/productmodel.js";
 import Payment from "../models/paymentmodel.js";
+import Customer from "../models/customerModel.js";
+import CustomerLedger from "../models/customerLedgerModel.js";
 import { clearShopCache } from "../middlewares/cache.js";
 import { Op } from "sequelize";
 
@@ -297,7 +299,7 @@ export const createBill = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { items, payments, customer_name, customer_phone, gst_percentage, discount_type, discount_value } = req.body;
+    const { items, payments, customer_id, customer_name, customer_phone, gst_percentage, discount_type, discount_value } = req.body;
     const userId = req.user.user_id;
     const shopId = req.user.shop_id;
 
@@ -416,6 +418,7 @@ export const createBill = async (req, res) => {
         discount_percentage: discountPercentage,
         discount_amount: discountAmount > 0 ? discountAmount : null,
         total_amount: totalAmount,
+        customer_id: customer_id || null,
         customer_name: customer_name || null,
         customer_phone: customer_phone || null,
         status: "PAID",
@@ -449,7 +452,11 @@ export const createBill = async (req, res) => {
 
     for (const pay of payments) {
       const amount = parseFloat(pay.amount) || 0;
-      paidAmount += amount;
+      
+      // ✅ Only count non-credit payments as "paid"
+      if (pay.mode !== 'credit') {
+        paidAmount += amount;
+      }
 
       paymentsToCreate.push({
         bill_id: bill.id,
@@ -462,13 +469,8 @@ export const createBill = async (req, res) => {
     // ✅ OPTIMIZATION: Batch create payments
     await Payment.bulkCreate(paymentsToCreate, { transaction });
 
-    // Compare with tolerance for floating point issues
-    const tolerance = 0.01;
-    if (Math.abs(paidAmount - totalAmount) > tolerance) {
-      throw new Error(`Payment amount (₹${paidAmount}) does not match bill total (₹${totalAmount})`);
-    }
-
-    const dueAmount = totalAmount - paidAmount;
+    // ✅ Calculate due amount (total - actually paid, excluding credit)
+    const dueAmount = Math.max(0, totalAmount - paidAmount);
 
     await bill.update(
       {
@@ -483,6 +485,36 @@ export const createBill = async (req, res) => {
       },
       { transaction }
     );
+
+    // ✅ CREDIT SYSTEM: If customer_id provided and there's due amount, create ledger entry
+    if (customer_id && dueAmount > 0) {
+      // Get customer
+      const customer = await Customer.findOne({
+        where: {
+          id: customer_id,
+          shop_id: shopId,
+        },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      if (customer) {
+        // Create debit ledger entry (customer owes money)
+        await CustomerLedger.create({
+          shop_id: shopId,
+          customer_id: customer_id,
+          type: 'debit',
+          amount: dueAmount,
+          reference_type: 'bill',
+          reference_id: bill.id,
+          description: `Bill ${bill.bill_number} - Due amount`,
+        }, { transaction });
+
+        // Update customer total_due
+        customer.total_due = parseFloat(customer.total_due) + parseFloat(dueAmount);
+        await customer.save({ transaction });
+      }
+    }
 
     await transaction.commit();
 

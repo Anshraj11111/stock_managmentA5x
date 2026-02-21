@@ -4,7 +4,7 @@ import Bill from "./billmodel.js";
 
 const Payment = sequelize.define("Payment", {
   payment_mode: {
-    type: DataTypes.ENUM("cash", "upi", "mixed"),
+    type: DataTypes.ENUM("cash", "upi", "card", "credit", "mixed"),
     allowNull: false,
   },
 

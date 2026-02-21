@@ -11,8 +11,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env from backend root
-dotenv.config();
+// ✅ ONLY load .env.local (priority file)
+dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
 // 2️⃣ Environment safety check
 
@@ -30,7 +30,18 @@ for (const key of REQUIRED_ENVS) {
   }
 }
 
-// 3️⃣ Imports AFTER env load
+// 3️⃣ Load models AFTER dotenv (so database.js gets correct env vars)
+import "./models/shopmodel.js";
+import "./models/usermodel.js";
+import "./models/productmodel.js";
+import "./models/billmodel.js";
+import "./models/billItemmodel.js";
+import "./models/paymentmodel.js";
+import "./models/adminmodel.js";
+import "./models/customerModel.js";
+import "./models/customerLedgerModel.js";
+
+// 4️⃣ Imports AFTER env load and models
 import app from "./app.js";
 import sequelize from "./config/database.js";
 
@@ -48,9 +59,9 @@ const startServer = async () => {
      */
     if (process.env.NODE_ENV !== "production") {
       try {
-        // Safe sync with indexes - only create tables if they don't exist
-        await sequelize.sync({ alter: true });
-        console.log("🗄️ Database synced successfully with indexes");
+        // Safe sync - only create tables if they don't exist, don't alter existing ones
+        await sequelize.sync({ alter: false });
+        console.log("🗄️ Database synced successfully");
       } catch (syncError) {
         console.error("❌ Database sync failed:", syncError.message);
       }

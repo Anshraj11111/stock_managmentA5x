@@ -94,6 +94,16 @@ const Bill = sequelize.define("Bill", {
   },
 
   // ✅ NEW FIELDS - Professional Billing Enhancement
+  customer_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    references: {
+      model: 'Customers',
+      key: 'id'
+    }
+  },
+
   customer_name: {
     type: DataTypes.STRING(100),
     allowNull: true,

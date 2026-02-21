@@ -19,7 +19,14 @@
 // src/config/database.js
 
 import dotenv from "dotenv";
-dotenv.config();
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// ✅ ONLY load .env.local (priority file)
+dotenv.config({ path: join(__dirname, '../../.env.local') });
 
 import { Sequelize } from "sequelize";
 
@@ -27,6 +34,9 @@ if (!process.env.DATABASE_URL) {
   console.error("❌ DATABASE_URL missing");
   process.exit(1);
 }
+
+// ✅ DEBUG: Print what DATABASE_URL we're using
+console.log('🔍 DATABASE_URL:', process.env.DATABASE_URL.substring(0, 50) + '...');
 
 // Check if using local database
 const isLocal = process.env.DATABASE_URL.includes('localhost');

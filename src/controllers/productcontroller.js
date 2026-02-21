@@ -11,6 +11,9 @@ export const addProduct = async (req, res) => {
       purchase_price,
       selling_price,
       stock_quantity,
+      stock_unit,
+      low_stock_threshold,
+      storage_location,
     } = req.body;
 
     if (!product_name || !purchase_price || !selling_price || !stock_quantity) {
@@ -22,6 +25,9 @@ export const addProduct = async (req, res) => {
       purchase_price,
       selling_price,
       stock_quantity,
+      stock_unit: stock_unit || 'pieces',
+      low_stock_threshold: low_stock_threshold || 10,
+      storage_location: storage_location || null,
       shop_id: req.user.shop_id,
     });
 
@@ -49,7 +55,7 @@ export const getProducts = async (req, res) => {
     // ✅ Optimized: Only select needed fields, use index
     const products = await Product.findAll({
       where: { shop_id: req.user.shop_id },
-      attributes: ['id', 'product_name', 'purchase_price', 'selling_price', 'stock_quantity'],
+      attributes: ['id', 'product_name', 'purchase_price', 'selling_price', 'stock_quantity', 'stock_unit', 'low_stock_threshold', 'storage_location'],
       order: [['product_name', 'ASC']],
       raw: true // Faster serialization
     });
