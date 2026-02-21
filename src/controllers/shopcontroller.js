@@ -77,6 +77,18 @@ export const updateShopDetails = async (req, res) => {
     
     // Only update signature if it's provided and not empty
     if (signature_image !== undefined && signature_image !== '') {
+      // Check signature size (should be less than 1MB in base64)
+      const sizeInBytes = signature_image.length;
+      const sizeInMB = sizeInBytes / (1024 * 1024);
+      
+      if (sizeInMB > 1.5) { // 1.5MB limit (base64 is ~33% larger than original)
+        console.log('❌ Signature image too large:', sizeInMB.toFixed(2), 'MB');
+        return res.status(400).json({ 
+          error: 'Signature image is too large. Please use an image smaller than 1MB.' 
+        });
+      }
+      
+      console.log('✅ Signature image size OK:', sizeInMB.toFixed(2), 'MB');
       updateData.signature_image = signature_image;
     }
     
