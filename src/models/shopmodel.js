@@ -104,7 +104,7 @@ const Shop = sequelize.define("Shop", {
   
   // Signature for Invoice
   authorized_signatory: DataTypes.STRING,
-  signature_image: DataTypes.TEXT, // Base64 encoded image
+  signature_image: DataTypes.TEXT('long'), // Base64 encoded image (up to 4GB)
   
   // Terms and Conditions for Invoice
   terms_and_conditions: DataTypes.TEXT,
