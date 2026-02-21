@@ -74,13 +74,20 @@ export const updateShopDetails = async (req, res) => {
     if (bank_account_number !== undefined) updateData.bank_account_number = bank_account_number;
     if (bank_ifsc !== undefined) updateData.bank_ifsc = bank_ifsc;
     if (authorized_signatory !== undefined) updateData.authorized_signatory = authorized_signatory;
-    if (signature_image !== undefined) updateData.signature_image = signature_image;
+    
+    // Only update signature if it's provided and not empty
+    if (signature_image !== undefined && signature_image !== '') {
+      updateData.signature_image = signature_image;
+    }
+    
     if (terms_and_conditions !== undefined) updateData.terms_and_conditions = terms_and_conditions;
     if (upi_id !== undefined) updateData.upi_id = upi_id;
     if (upi_name !== undefined) updateData.upi_name = upi_name;
 
     console.log('Update data fields:', Object.keys(updateData));
-    console.log('Signature image length:', signature_image ? signature_image.length : 0);
+    if (signature_image) {
+      console.log('Signature image length:', signature_image.length);
+    }
 
     const [affectedRows] = await Shop.update(updateData, { where: { id: req.shop.id } });
     
