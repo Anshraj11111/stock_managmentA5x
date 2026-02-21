@@ -43,6 +43,12 @@ const Product = sequelize.define("Product", {
     defaultValue: 10,
   },
 
+  storage_location: {
+    type: DataTypes.STRING, // Rack/Godown location (e.g., "Rack A-5", "Godown 2", "Section B12")
+    allowNull: true,
+    defaultValue: null,
+  },
+
   shop_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
