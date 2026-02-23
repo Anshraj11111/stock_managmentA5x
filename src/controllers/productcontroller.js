@@ -14,6 +14,8 @@ export const addProduct = async (req, res) => {
       stock_unit,
       low_stock_threshold,
       storage_location,
+      expiry_date,
+      date_added,
     } = req.body;
 
     if (!product_name || !purchase_price || !selling_price || !stock_quantity) {
@@ -28,6 +30,8 @@ export const addProduct = async (req, res) => {
       stock_unit: stock_unit || 'pieces',
       low_stock_threshold: low_stock_threshold || 10,
       storage_location: storage_location || null,
+      expiry_date: expiry_date || null,
+      date_added: date_added || null, // ✅ Empty string becomes null
       shop_id: req.user.shop_id,
     });
 
@@ -55,7 +59,18 @@ export const getProducts = async (req, res) => {
     // ✅ Optimized: Only select needed fields, use index
     const products = await Product.findAll({
       where: { shop_id: req.user.shop_id },
-      attributes: ['id', 'product_name', 'purchase_price', 'selling_price', 'stock_quantity', 'stock_unit', 'low_stock_threshold', 'storage_location'],
+      attributes: [
+        'id', 
+        'product_name', 
+        'purchase_price', 
+        'selling_price', 
+        'stock_quantity', 
+        'stock_unit', 
+        'low_stock_threshold', 
+        'storage_location',
+        'expiry_date',
+        'date_added'
+      ],
       order: [['product_name', 'ASC']],
       raw: true // Faster serialization
     });
@@ -75,22 +90,45 @@ export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const updated = await Product.update(req.body, {
+    console.log("📝 Update Product Request:");
+    console.log("Product ID:", id);
+    console.log("Request Body:", req.body);
+    console.log("Shop ID:", req.user.shop_id);
+
+    // ✅ Clean up date fields - convert empty strings to null
+    const updateData = { ...req.body };
+    if (updateData.expiry_date === '' || updateData.expiry_date === 'Invalid date') {
+      updateData.expiry_date = null;
+    }
+    if (updateData.date_added === '' || updateData.date_added === 'Invalid date') {
+      updateData.date_added = null;
+    }
+
+    console.log("📝 Cleaned Update Data:", updateData);
+
+    const updated = await Product.update(updateData, {
       where: {
         id,
         shop_id: req.user.shop_id,
       },
     });
 
+    console.log("✅ Update Result:", updated);
+
     if (updated[0] === 0) {
+      console.log("❌ Product not found");
       return res.status(404).json({ message: "Product not found" });
     }
 
     // Clear cache for this shop
     clearShopCache(req.user.shop_id);
 
+    console.log("✅ Product updated successfully");
     res.json({ message: "Product updated successfully" });
   } catch (error) {
+    console.error("❌ UPDATE PRODUCT ERROR:", error);
+    console.error("Error details:", error.message);
+    console.error("Error stack:", error.stack);
     res.status(500).json({ error: error.message });
   }
 };
