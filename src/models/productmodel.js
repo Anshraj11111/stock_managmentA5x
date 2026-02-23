@@ -49,6 +49,18 @@ const Product = sequelize.define("Product", {
     defaultValue: null,
   },
 
+  expiry_date: {
+    type: DataTypes.DATEONLY, // Optional expiry date for products
+    allowNull: true,
+    defaultValue: null,
+  },
+
+  date_added: {
+    type: DataTypes.DATEONLY, // Date when product was added (optional - owner can set manually)
+    allowNull: true,
+    defaultValue: null,
+  },
+
   shop_id: {
     type: DataTypes.INTEGER,
     allowNull: false,

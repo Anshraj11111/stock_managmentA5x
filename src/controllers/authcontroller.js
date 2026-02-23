@@ -55,7 +55,7 @@ export const signup = async (req, res) => {
         shop_id: shop.id,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "30d" }
     );
 
     res.status(201).json({
@@ -95,7 +95,7 @@ export const login = async (req, res) => {
         shop_id: user.shop_id,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "30d" }
     );
 
     res.json({

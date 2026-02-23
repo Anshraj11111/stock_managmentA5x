@@ -20,7 +20,7 @@ const generateAdminToken = (admin) => {
       role: admin.role
     },
     process.env.ADMIN_JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '30d' }
   );
 };
 
