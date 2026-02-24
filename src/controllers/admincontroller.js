@@ -466,7 +466,7 @@ export const deactivateUser = async (req, res) => {
   }
 };
 
-// Soft delete user
+// Delete user (Hard delete)
 export const softDeleteUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -480,8 +480,8 @@ export const softDeleteUser = async (req, res) => {
       });
     }
     
-    // Soft delete by deactivating
-    await user.update({ isActive: false });
+    // Hard delete the user
+    await user.destroy();
     
     res.json({
       success: true,
@@ -533,6 +533,7 @@ export const getShops = async (req, res) => {
         s.plan_type,
         s.trial_end_date,
         s.subscription_active,
+        s.isSuspended,
         s.createdAt,
         owner.name as owner_name,
         owner.email as owner_email,
@@ -590,6 +591,7 @@ export const getShops = async (req, res) => {
       plan_type: shop.plan_type || 'N/A',
       trial_end_date: shop.trial_end_date,
       subscription_active: shop.subscription_active,
+      isSuspended: shop.isSuspended || false,
       total_products: parseInt(shop.total_products) || 0,
       total_staff: parseInt(shop.total_staff) || 0,
       createdAt: shop.createdAt
@@ -612,7 +614,7 @@ export const getShops = async (req, res) => {
   }
 };
 
-// Suspend shop
+// Suspend/Unsuspend shop
 export const suspendShop = async (req, res) => {
   try {
     const { id } = req.params;
@@ -626,11 +628,14 @@ export const suspendShop = async (req, res) => {
       });
     }
     
-    await shop.update({ subscription_active: false });
+    // Toggle suspend status
+    const newSuspendStatus = !shop.isSuspended;
+    await shop.update({ isSuspended: newSuspendStatus });
     
     res.json({
       success: true,
-      message: "Shop suspended successfully"
+      message: newSuspendStatus ? "Shop suspended successfully" : "Shop unsuspended successfully",
+      isSuspended: newSuspendStatus
     });
   } catch (error) {
     console.error("Suspend shop error:", error);
@@ -642,16 +647,16 @@ export const suspendShop = async (req, res) => {
   }
 };
 
-// Extend trial period
+// Extend or reduce trial period
 export const extendTrial = async (req, res) => {
   try {
     const { id } = req.params;
     const { days } = req.body;
     
-    if (!days || days <= 0) {
+    if (!days || days === 0) {
       return res.status(400).json({
         success: false,
-        message: "Valid number of days required"
+        message: "Valid number of days required (can be negative to reduce)"
       });
     }
     
@@ -664,23 +669,26 @@ export const extendTrial = async (req, res) => {
       });
     }
     
-    // Extend trial end date
+    // Extend or reduce trial end date
     const currentTrialEnd = shop.trial_end_date ? new Date(shop.trial_end_date) : new Date();
     const newTrialEnd = new Date(currentTrialEnd);
     newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(days));
     
     await shop.update({ trial_end_date: newTrialEnd });
     
+    const action = days > 0 ? 'extended' : 'reduced';
+    const absDays = Math.abs(days);
+    
     res.json({
       success: true,
-      message: `Trial extended by ${days} days`,
+      message: `Trial ${action} by ${absDays} days`,
       new_trial_end_date: newTrialEnd
     });
   } catch (error) {
     console.error("Extend trial error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to extend trial",
+      message: "Failed to update trial period",
       error: error.message
     });
   }

@@ -85,6 +85,11 @@ const Shop = sequelize.define("Shop", {
     defaultValue: false,
   },
 
+  isSuspended: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+
   plan_type: {
     type: DataTypes.STRING, // trial | monthly | halfyear | yearly
   },
