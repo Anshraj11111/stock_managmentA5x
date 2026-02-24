@@ -115,3 +115,56 @@ export const monthlySalesReport = async (req, res) => {
 };
 
 
+
+/**
+ * 📊 DATE RANGE SALES REPORT
+ * GET /api/reports/date-range?startDate=2026-02-01&endDate=2026-02-28
+ */
+export const dateRangeSalesReport = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        message: "startDate and endDate are required (format: YYYY-MM-DD)",
+      });
+    }
+
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    // Get daily breakdown for the date range
+    const dailyStats = await Bill.findAll({
+      where: {
+        shop_id: req.user.shop_id,
+        status: { [Op.ne]: "CANCELLED" },
+        createdAt: { [Op.between]: [start, end] },
+      },
+      attributes: [
+        [sequelize.fn('DATE', sequelize.col('createdAt')), 'date'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'total_bills'],
+        [sequelize.fn('SUM', sequelize.col('total_amount')), 'total_sales'],
+        [sequelize.fn('SUM', sequelize.col('paid_amount')), 'received_amount'],
+        [sequelize.fn('SUM', sequelize.col('due_amount')), 'due_amount'],
+      ],
+      group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
+      order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'DESC']],
+      raw: true
+    });
+
+    const formattedStats = dailyStats.map(stat => ({
+      date: stat.date,
+      total_bills: parseInt(stat.total_bills) || 0,
+      total_sales: parseFloat(stat.total_sales) || 0,
+      received_amount: parseFloat(stat.received_amount) || 0,
+      due_amount: parseFloat(stat.due_amount) || 0,
+    }));
+
+    res.json(formattedStats);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
