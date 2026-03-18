@@ -18,53 +18,97 @@
 // export default sequelize;
 // src/config/database.js
 
+// import dotenv from "dotenv";
+// import { fileURLToPath } from 'url';
+// import { dirname, join } from 'path';
+
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = dirname(__filename);
+
+// // ✅ ONLY load .env.local (priority file)
+// dotenv.config({ path: join(__dirname, '../../.env.local') });
+
+// import { Sequelize } from "sequelize";
+
+// if (!process.env.DATABASE_URL) {
+//   console.error("❌ DATABASE_URL missing");
+//   process.exit(1);
+// }
+
+// // ✅ DEBUG: Print what DATABASE_URL we're using
+// console.log('🔍 DATABASE_URL:', process.env.DATABASE_URL.substring(0, 50) + '...');
+
+// // Check if using local database
+// const isLocal = process.env.DATABASE_URL.includes('localhost');
+
+// const sequelize = new Sequelize(process.env.DATABASE_URL, {
+//   dialect: "mysql",
+//   logging: false,
+//   pool: {
+//     max: 10,        // Maximum connections in pool
+//     min: 2,         // Minimum connections in pool
+//     acquire: 60000, // Max time (ms) to get connection
+//     idle: 10000     // Max idle time before release
+//   },
+//   dialectOptions: isLocal ? {
+//     // Local database - no SSL
+//     connectTimeout: 60000,
+//   } : {
+//     // Remote database (Railway) - with SSL
+//     connectTimeout: 60000,
+//     ssl: {
+//       require: true,
+//       rejectUnauthorized: false,
+//     },
+//   },
+//   define: {
+//     charset: 'utf8',
+//     collate: 'utf8_general_ci'
+//   }
+// });
+
+// export default sequelize;
+
+
 import dotenv from "dotenv";
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// ✅ ONLY load .env.local (priority file)
-dotenv.config({ path: join(__dirname, '../../.env.local') });
-
 import { Sequelize } from "sequelize";
 
-if (!process.env.DATABASE_URL) {
-  console.error("❌ DATABASE_URL missing");
+dotenv.config();
+
+if (
+  !process.env.MYSQLHOST ||
+  !process.env.MYSQLUSER ||
+  !process.env.MYSQLPASSWORD ||
+  !process.env.MYSQLDATABASE
+) {
+  console.error("❌ Missing MySQL ENV");
   process.exit(1);
 }
 
-// ✅ DEBUG: Print what DATABASE_URL we're using
-console.log('🔍 DATABASE_URL:', process.env.DATABASE_URL.substring(0, 50) + '...');
+const sequelize = new Sequelize(
+  process.env.MYSQLDATABASE,
+  process.env.MYSQLUSER,
+  process.env.MYSQLPASSWORD,
+  {
+    host: process.env.MYSQLHOST,
+    port: process.env.MYSQLPORT || 4000,
+    dialect: "mysql",
+    logging: false,
 
-// Check if using local database
-const isLocal = process.env.DATABASE_URL.includes('localhost');
-
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  dialect: "mysql",
-  logging: false,
-  pool: {
-    max: 10,        // Maximum connections in pool
-    min: 2,         // Minimum connections in pool
-    acquire: 60000, // Max time (ms) to get connection
-    idle: 10000     // Max idle time before release
-  },
-  dialectOptions: isLocal ? {
-    // Local database - no SSL
-    connectTimeout: 60000,
-  } : {
-    // Remote database (Railway) - with SSL
-    connectTimeout: 60000,
-    ssl: {
-      require: true,
-      rejectUnauthorized: false,
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false,
+      },
     },
-  },
-  define: {
-    charset: 'utf8',
-    collate: 'utf8_general_ci'
+
+    pool: {
+      max: 10,
+      min: 2,
+      acquire: 60000,
+      idle: 10000,
+    },
   }
-});
+);
 
 export default sequelize;
