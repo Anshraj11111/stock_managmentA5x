@@ -312,8 +312,8 @@ export const createBill = async (req, res) => {
     }
 
     // ✅ Validate customer phone if provided
-    if (customer_phone && !/^[0-9]{10}$/.test(customer_phone)) {
-      return res.status(400).json({ message: "Phone number must be exactly 10 digits" });
+    if (customer_phone && !/^(\+91)?[0-9]{10}$/.test(customer_phone)) {
+      return res.status(400).json({ message: "Phone number must be 10 digits (with or without +91)" });
     }
 
     // ✅ Validate GST percentage if provided
@@ -478,10 +478,10 @@ export const createBill = async (req, res) => {
         due_amount: dueAmount,
         status:
           dueAmount === 0
-            ? "paid"
+            ? "PAID"
             : paidAmount === 0
-            ? "unpaid"
-            : "partial",
+            ? "UNPAID"
+            : "PARTIAL",
       },
       { transaction }
     );

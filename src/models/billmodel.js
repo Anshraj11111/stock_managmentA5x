@@ -111,12 +111,9 @@ const Bill = sequelize.define("Bill", {
   },
 
   customer_phone: {
-    type: DataTypes.STRING(10),
+    type: DataTypes.STRING(15),
     allowNull: true,
     defaultValue: null,
-    validate: {
-      is: /^[0-9]{10}$/  // Exactly 10 digits
-    }
   },
 
   subtotal_amount: {
