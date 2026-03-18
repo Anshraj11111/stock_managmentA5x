@@ -32,7 +32,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
   "https://stock-managmentfrontend.vercel.app",
-  
+  "https://stock-managment-frontend.vercel.app",
 ];
 
 app.use(
@@ -40,7 +40,11 @@ app.use(
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
+      // Allow any vercel.app subdomain (for preview deployments)
+      if (
+        allowedOrigins.includes(origin) ||
+        /^https:\/\/.*\.vercel\.app$/.test(origin)
+      ) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
