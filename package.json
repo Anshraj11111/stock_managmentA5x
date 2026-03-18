@@ -8,7 +8,8 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "migrate:fix-phone": "node src/migrations/fix-customer-phone-length.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
