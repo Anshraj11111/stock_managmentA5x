@@ -24,7 +24,7 @@ export const signup = async (req, res) => {
 
     const today = new Date();
     const trialEnd = new Date();
-    trialEnd.setDate(today.getDate() + 7);
+    trialEnd.setDate(today.getDate() + 180); // 6 months = 180 days
 
     // ✅ FIX — store shop in variable
     const shop = await Shop.create({
@@ -93,7 +93,7 @@ export const login = async (req, res) => {
       // Check if shop is suspended
       if (shop.isSuspended) {
         return res.status(403).json({ 
-          message: "Your account has been suspended. Please contact support: +91-9876543210",
+          message: "Your account has been suspended. Please contact support: +91-8269858259",
           suspended: true
         });
       }
@@ -104,7 +104,7 @@ export const login = async (req, res) => {
       // If plan is trial and trial has expired
       if (shop.plan_type === 'trial' && trialEndDate < today) {
         return res.status(403).json({ 
-          message: "Trial expired. Please purchase subscription. Contact: +91-9876543210 for any queries.",
+          message: "Trial expired. Please purchase subscription. Contact: +91-8269858259 for any queries.",
           trialExpired: true
         });
       }

@@ -35,7 +35,7 @@ const authMiddleware = async (req, res, next) => {
         // Check if shop is suspended
         if (shop.isSuspended) {
           return res.status(403).json({ 
-            message: "Your account has been suspended. Please contact support: +91-9876543210",
+            message: "Your account has been suspended. Please contact support: +91-8269858259",
             suspended: true
           });
         }
@@ -46,7 +46,7 @@ const authMiddleware = async (req, res, next) => {
         // If plan is trial and trial has expired
         if (shop.plan_type === 'trial' && trialEndDate < today) {
           return res.status(403).json({ 
-            message: "Trial expired. Please purchase subscription. Contact: +91-9876543210 for any queries.",
+            message: "Trial expired. Please purchase subscription. Contact: +91-8269858259 for any queries.",
             trialExpired: true
           });
         }
