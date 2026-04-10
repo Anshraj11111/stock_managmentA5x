@@ -24,7 +24,7 @@ export const signup = async (req, res) => {
 
     const today = new Date();
     const trialEnd = new Date();
-    trialEnd.setDate(today.getDate() + 180); // 6 months = 180 days
+    trialEnd.setDate(today.getDate() + 7); // 7 days trial
 
     // ✅ FIX — store shop in variable
     const shop = await Shop.create({
