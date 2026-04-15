@@ -31,6 +31,8 @@ app.use(performanceLogger); // Log slow requests
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
+  "http://localhost:5173", // Vite dev server
+  "http://localhost:5174", // Vite dev server alternate port
   "https://stock-managmentfrontend.vercel.app",
   "https://stock-managment-frontend.vercel.app",
 ];

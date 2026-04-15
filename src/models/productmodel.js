@@ -61,6 +61,25 @@ const Product = sequelize.define("Product", {
     defaultValue: null,
   },
 
+  // Clothes-specific fields
+  sub_category: {
+    type: DataTypes.STRING, // Age/gender classification: Women, Men, Child, Girl, Boy
+    allowNull: true,
+    defaultValue: null,
+  },
+
+  size: {
+    type: DataTypes.STRING, // Clothing size: XS, S, M, L, XL, XXL, XXXL, or custom
+    allowNull: true,
+    defaultValue: null,
+  },
+
+  brand_name: {
+    type: DataTypes.STRING, // Brand/manufacturer name
+    allowNull: true,
+    defaultValue: null,
+  },
+
   shop_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -69,7 +88,9 @@ const Product = sequelize.define("Product", {
   indexes: [
     { fields: ['shop_id'] },
     { fields: ['product_name'] },
-    { fields: ['shop_id', 'stock_quantity'] }
+    { fields: ['shop_id', 'stock_quantity'] },
+    { fields: ['sub_category'] }, // Index for filtering by sub-category
+    { fields: ['brand_name'] }, // Index for filtering by brand
   ]
 });
 

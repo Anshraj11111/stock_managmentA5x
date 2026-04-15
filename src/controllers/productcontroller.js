@@ -16,6 +16,9 @@ export const addProduct = async (req, res) => {
       storage_location,
       expiry_date,
       date_added,
+      sub_category,
+      size,
+      brand_name,
     } = req.body;
 
     if (!product_name || !purchase_price || !selling_price || !stock_quantity) {
@@ -31,7 +34,10 @@ export const addProduct = async (req, res) => {
       low_stock_threshold: low_stock_threshold || 10,
       storage_location: storage_location || null,
       expiry_date: expiry_date || null,
-      date_added: date_added || null, // ✅ Empty string becomes null
+      date_added: date_added || null,
+      sub_category: sub_category || null,
+      size: size || null,
+      brand_name: brand_name || null,
       shop_id: req.user.shop_id,
     });
 
@@ -69,7 +75,10 @@ export const getProducts = async (req, res) => {
         'low_stock_threshold', 
         'storage_location',
         'expiry_date',
-        'date_added'
+        'date_added',
+        'sub_category',
+        'size',
+        'brand_name'
       ],
       order: [['product_name', 'ASC']],
       raw: true // Faster serialization
@@ -100,9 +109,21 @@ export const updateProduct = async (req, res) => {
     if (updateData.expiry_date === '' || updateData.expiry_date === 'Invalid date') {
       updateData.expiry_date = null;
     }
-    if (updateData.date_added === '' || updateData.date_added === 'Invalid date') {
-      updateData.date_added = null;
+    
+    // ✅ Clean up clothes fields - convert empty strings to null
+    if (updateData.sub_category === '') {
+      updateData.sub_category = null;
     }
+    if (updateData.size === '') {
+      updateData.size = null;
+    }
+    if (updateData.brand_name === '') {
+      updateData.brand_name = null;
+    }
+    
+    // ✅ Ensure date_added is not modified during updates
+    // Remove date_added from update data to preserve original value
+    delete updateData.date_added;
 
     console.log("📝 Cleaned Update Data:", updateData);
 
