@@ -24,7 +24,7 @@ export const signup = async (req, res) => {
 
     const today = new Date();
     const trialEnd = new Date();
-    trialEnd.setDate(today.getDate() + 7); // 7 days trial
+    trialEnd.setDate(today.getDate() + 31); // 31 days trial
 
     // ✅ FIX — store shop in variable
     const shop = await Shop.create({
@@ -36,6 +36,7 @@ export const signup = async (req, res) => {
       trial_end_date: trialEnd,
       subscription_active: false,
       plan_type: "trial",
+      subscription_plan: "trial",
     });
 
     const owner = await User.create({
@@ -87,26 +88,41 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // ✅ Check trial expiry for shop
+    // ✅ Check trial expiry and subscription for shop
     const shop = await Shop.findByPk(user.shop_id);
     if (shop) {
       // Check if shop is suspended
       if (shop.isSuspended) {
         return res.status(403).json({ 
-          message: "Your account has been suspended. Please contact support: +91-8269858259",
+          message: shop.suspension_reason || "Your account has been suspended. Please contact support: +91-8269858259",
           suspended: true
         });
       }
 
       const today = new Date();
-      const trialEndDate = new Date(shop.trial_end_date);
       
-      // If plan is trial and trial has expired
-      if (shop.plan_type === 'trial' && trialEndDate < today) {
-        return res.status(403).json({ 
-          message: "Trial expired. Please purchase subscription. Contact: +91-8269858259 for any queries.",
-          trialExpired: true
-        });
+      // Check if trial expired and deposit not paid
+      if ((shop.subscription_plan === 'trial' || !shop.subscription_plan) && shop.trial_end_date) {
+        const trialEndDate = new Date(shop.trial_end_date);
+        if (trialEndDate < today && !shop.deposit_paid) {
+          return res.status(403).json({ 
+            message: "Trial expired. Please pay ₹100 deposit to continue. Contact: +91-8269858259 for any queries.",
+            trialExpired: true,
+            action_required: 'deposit'
+          });
+        }
+      }
+
+      // Check if subscription expired
+      if (shop.subscription_end_date) {
+        const endDate = new Date(shop.subscription_end_date);
+        if (endDate < today) {
+          return res.status(403).json({ 
+            message: "Subscription expired. Please renew your subscription. Contact: +91-8269858259 for any queries.",
+            subscriptionExpired: true,
+            action_required: 'renewal'
+          });
+        }
       }
     }
 

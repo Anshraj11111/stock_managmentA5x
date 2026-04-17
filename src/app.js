@@ -15,6 +15,8 @@ import reportRoutes from "./routes/reportRoutes.js";
 import invoiceRoutes from "./routes/invoiceRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import adminSubscriptionRoutes from "./routes/adminSubscriptionRoutes.js";
 
 import { apiLimiter, authLimiter } from "./middlewares/ratemiddleware.js";
 
@@ -63,6 +65,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 
 /* ================= ADMIN ROUTES ================= */
 app.use("/api", adminRoutes);
+app.use("/api/admin", adminSubscriptionRoutes);
 
 /* ============== PROTECTED ROUTES ============== */
 app.use("/api/shop", shopRoutes);
@@ -72,6 +75,7 @@ app.use("/api/bills", billRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/subscription", subscriptionRoutes);
 // app.use("/api/payment", paymentRoutes);
 
 /* ============== RATE LIMITER LAST ============== */

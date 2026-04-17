@@ -98,6 +98,48 @@ const Shop = sequelize.define("Shop", {
     type: DataTypes.DATE,
   },
 
+  // New subscription fields
+  subscription_plan: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    defaultValue: 'trial'
+  },
+
+  subscription_start_date: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+
+  subscription_end_date: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+
+  deposit_paid: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+
+  deposit_amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0
+  },
+
+  deposit_refunded: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+
+  deposit_refund_date: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+
+  suspension_reason: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+
   upi_id: DataTypes.STRING,
   upi_name: DataTypes.STRING,
 
