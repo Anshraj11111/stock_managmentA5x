@@ -11,6 +11,8 @@ import "./models/paymentmodel.js";
 import "./models/adminmodel.js";
 import "./models/customerModel.js";
 import "./models/customerLedgerModel.js";
+import "./models/subscriptionHistoryModel.js";
+import "./models/adminSettingsModel.js";
 
 import app from "./app.js";
 import sequelize from "./config/database.js";
