@@ -207,43 +207,52 @@ export const getDashboardStats = async (req, res) => {
     const trialSubscriptions = trialShops;
     const expiredSubscriptions = expiredShops;
 
-    // Revenue statistics
-    const totalRevenue = await Payment.sum('amount') || 0;
-    
-    // Monthly revenue (current month)
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-    
-    const endOfMonth = new Date();
-    endOfMonth.setMonth(endOfMonth.getMonth() + 1);
-    endOfMonth.setDate(0);
-    endOfMonth.setHours(23, 59, 59, 999);
-    
-    const monthlyRevenue = await Payment.sum('amount', {
-      where: {
-        createdAt: {
-          [Op.gte]: startOfMonth,
-          [Op.lte]: endOfMonth
-        }
-      }
-    }) || 0;
+    // Revenue statistics - with error handling for Payment table
+    let totalRevenue = 0;
+    let monthlyRevenue = 0;
+    let todayRevenue = 0;
 
-    // Today's revenue
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
-    
-    const todayRevenue = await Payment.sum('amount', {
-      where: {
-        createdAt: {
-          [Op.gte]: startOfDay,
-          [Op.lte]: endOfDay
+    try {
+      totalRevenue = await Payment.sum('amount') || 0;
+      
+      // Monthly revenue (current month)
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      
+      const endOfMonth = new Date();
+      endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+      endOfMonth.setDate(0);
+      endOfMonth.setHours(23, 59, 59, 999);
+      
+      monthlyRevenue = await Payment.sum('amount', {
+        where: {
+          createdAt: {
+            [Op.gte]: startOfMonth,
+            [Op.lte]: endOfMonth
+          }
         }
-      }
-    }) || 0;
+      }) || 0;
+
+      // Today's revenue
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      todayRevenue = await Payment.sum('amount', {
+        where: {
+          createdAt: {
+            [Op.gte]: startOfDay,
+            [Op.lte]: endOfDay
+          }
+        }
+      }) || 0;
+    } catch (paymentError) {
+      console.error('Payment table query error:', paymentError.message);
+      // Continue with zero values if Payment table doesn't exist or has issues
+    }
 
     // Product and staff counts
     const totalProducts = await Product.count();
