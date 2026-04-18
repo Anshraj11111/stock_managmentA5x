@@ -31,29 +31,34 @@ export const dailySalesReport = async (req, res) => {
       raw: true
     });
 
-    // Payment mode breakup
-    const paymentBreakup = await Payment.findAll({
-      include: [{
-        model: Bill,
-        where: {
-          shop_id: req.user.shop_id,
-          status: { [Op.ne]: "CANCELLED" },
-          createdAt: { [Op.between]: [start, end] },
-        },
-        attributes: []
-      }],
-      attributes: [
-        'payment_mode',
-        [sequelize.fn('SUM', sequelize.col('amount')), 'total']
-      ],
-      group: ['payment_mode'],
-      raw: true
-    });
+    // Payment mode breakup - with error handling
+    let paymentModes = {};
+    try {
+      const paymentBreakup = await Payment.findAll({
+        include: [{
+          model: Bill,
+          where: {
+            shop_id: req.user.shop_id,
+            status: { [Op.ne]: "CANCELLED" },
+            createdAt: { [Op.between]: [start, end] },
+          },
+          attributes: []
+        }],
+        attributes: [
+          'payment_mode',
+          [sequelize.fn('SUM', sequelize.col('amount')), 'total']
+        ],
+        group: ['payment_mode'],
+        raw: true
+      });
 
-    const paymentModes = {};
-    paymentBreakup.forEach(p => {
-      paymentModes[p.payment_mode] = parseFloat(p.total) || 0;
-    });
+      paymentBreakup.forEach(p => {
+        paymentModes[p.payment_mode] = parseFloat(p.total) || 0;
+      });
+    } catch (paymentError) {
+      console.error('Payment breakup error:', paymentError.message);
+      // Continue without payment breakup if there's an error
+    }
 
     res.json({
       date: start.toISOString().slice(0, 10),
@@ -64,6 +69,7 @@ export const dailySalesReport = async (req, res) => {
       payment_breakup: paymentModes,
     });
   } catch (error) {
+    console.error('Daily sales report error:', error);
     res.status(500).json({ error: error.message });
   }
 };
