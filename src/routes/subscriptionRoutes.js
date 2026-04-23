@@ -10,11 +10,11 @@ import authMiddleware from '../middlewares/authmiddleware.js';
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(authMiddleware);
-
-// Get available plans
+// Get available plans - NO authentication required (public)
 router.get('/plans', getPlans);
+
+// All other routes require authentication
+router.use(authMiddleware);
 
 // Get current subscription
 router.get('/current', getCurrentSubscription);
