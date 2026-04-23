@@ -90,6 +90,10 @@ export const login = async (req, res) => {
 
     // ✅ Check trial expiry and subscription for shop
     const shop = await Shop.findByPk(user.shop_id);
+    let trialExpired = false;
+    let subscriptionExpired = false;
+    let warningMessage = '';
+
     if (shop) {
       // Check if shop is suspended
       if (shop.isSuspended) {
@@ -105,11 +109,8 @@ export const login = async (req, res) => {
       if ((shop.subscription_plan === 'trial' || !shop.subscription_plan) && shop.trial_end_date) {
         const trialEndDate = new Date(shop.trial_end_date);
         if (trialEndDate < today && !shop.deposit_paid) {
-          return res.status(403).json({ 
-            message: "Trial expired. Please pay ₹100 deposit to continue. Contact: +91-8269858259 for any queries.",
-            trialExpired: true,
-            action_required: 'deposit'
-          });
+          trialExpired = true;
+          warningMessage = "Trial expired. Please pay ₹100 deposit to continue. Contact: +91-8269858259 for any queries.";
         }
       }
 
@@ -117,11 +118,8 @@ export const login = async (req, res) => {
       if (shop.subscription_end_date) {
         const endDate = new Date(shop.subscription_end_date);
         if (endDate < today) {
-          return res.status(403).json({ 
-            message: "Subscription expired. Please renew your subscription. Contact: +91-8269858259 for any queries.",
-            subscriptionExpired: true,
-            action_required: 'renewal'
-          });
+          subscriptionExpired = true;
+          warningMessage = "Subscription expired. Please renew your subscription. Contact: +91-8269858259 for any queries.";
         }
       }
     }
@@ -141,6 +139,10 @@ export const login = async (req, res) => {
       success: true,
       message: "Login successful",
       token,
+      trialExpired,
+      subscriptionExpired,
+      warningMessage,
+      action_required: trialExpired ? 'deposit' : (subscriptionExpired ? 'renewal' : null)
     });
 
   } catch (error) {
