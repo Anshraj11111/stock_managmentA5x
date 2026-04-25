@@ -153,6 +153,9 @@ const Bill = sequelize.define("Bill", {
     allowNull: true,
     defaultValue: null,
   },
+}, {
+  underscored: true,
+  timestamps: true,
 });
 
 Bill.belongsTo(Shop, { foreignKey: "shop_id" });

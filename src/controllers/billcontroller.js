@@ -168,7 +168,7 @@ import sequelize from "../config/database.js";
 import Bill from "../models/billmodel.js";
 import BillItem from "../models/billItemmodel.js";
 import Product from "../models/productmodel.js";
-import Payment from "../models/paymentmodel.js";
+import BillPayment from "../models/billPaymentModel.js";
 import Customer from "../models/customerModel.js";
 import CustomerLedger from "../models/customerLedgerModel.js";
 import { clearShopCache } from "../middlewares/cache.js";
@@ -467,7 +467,7 @@ export const createBill = async (req, res) => {
     }
 
     // ✅ OPTIMIZATION: Batch create payments
-    await Payment.bulkCreate(paymentsToCreate, { transaction });
+    await BillPayment.bulkCreate(paymentsToCreate, { transaction });
 
     // ✅ Calculate due amount (total - actually paid, excluding credit)
     const dueAmount = Math.max(0, totalAmount - paidAmount);
@@ -630,7 +630,7 @@ export const getBillById = async (req, res) => {
             attributes: ['product_name', 'selling_price'] 
           }]
         },
-        { model: Payment },
+        { model: BillPayment },
       ],
     });
 
@@ -686,7 +686,7 @@ export const payDue = async (req, res) => {
       return res.status(400).json({ message: "Invalid bill" });
     }
 
-    await Payment.create({
+    await BillPayment.create({
       bill_id: bill.id,
       amount,
       payment_mode: mode,

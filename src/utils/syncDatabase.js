@@ -4,6 +4,7 @@ import '../models/usermodel.js';
 import '../models/productmodel.js';
 import '../models/billmodel.js';
 import '../models/billItemmodel.js';
+import '../models/billPaymentModel.js';
 import '../models/paymentmodel.js';
 
 export const syncDatabase = async () => {
