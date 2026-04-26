@@ -1,5 +1,6 @@
 import Product from "../models/productmodel.js";
 import { clearShopCache } from "../middlewares/cache.js";
+import { Op } from "sequelize";
 
 /**
  * ➕ ADD PRODUCT
@@ -54,7 +55,7 @@ export const addProduct = async (req, res) => {
 };
 
 /**
- * 📦 GET ALL PRODUCTS (SHOP-WISE)
+ * 📦 GET ALL PRODUCTS (SHOP-WISE) - WITH PAGINATION
  */
 export const getProducts = async (req, res) => {
   try {
@@ -62,9 +63,30 @@ export const getProducts = async (req, res) => {
       return res.status(400).json({ message: "req.user missing" });
     }
 
-    // ✅ Optimized: Only select needed fields, use index
+    // ✅ Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50; // Default 50 items per page
+    const offset = (page - 1) * limit;
+    
+    // ✅ Search parameter
+    const search = req.query.search || '';
+
+    // ✅ Build where clause
+    const whereClause = { shop_id: req.user.shop_id };
+    if (search) {
+      whereClause.product_name = {
+        [Op.like]: `%${search}%`
+      };
+    }
+
+    // ✅ Get total count for pagination
+    const totalCount = await Product.count({
+      where: whereClause
+    });
+
+    // ✅ Optimized: Only select needed fields, use index, with pagination
     const products = await Product.findAll({
-      where: { shop_id: req.user.shop_id },
+      where: whereClause,
       attributes: [
         'id', 
         'product_name', 
@@ -81,12 +103,55 @@ export const getProducts = async (req, res) => {
         'brand_name'
       ],
       order: [['product_name', 'ASC']],
+      limit,
+      offset,
       raw: true // Faster serialization
+    });
+
+    res.json({
+      products,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        hasMore: offset + products.length < totalCount
+      }
+    });
+  } catch (error) {
+    console.error("GET PRODUCTS ERROR:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * 📦 GET ALL PRODUCTS (FOR BILLING) - Lightweight, no pagination
+ */
+export const getProductsForBilling = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(400).json({ message: "req.user missing" });
+    }
+
+    // ✅ Only get essential fields for billing
+    const products = await Product.findAll({
+      where: { 
+        shop_id: req.user.shop_id,
+        stock_quantity: { [Op.gt]: 0 } // Only products in stock
+      },
+      attributes: [
+        'id', 
+        'product_name', 
+        'selling_price', 
+        'stock_quantity'
+      ],
+      order: [['product_name', 'ASC']],
+      raw: true
     });
 
     res.json(products);
   } catch (error) {
-    console.error("GET PRODUCTS ERROR:", error);
+    console.error("GET PRODUCTS FOR BILLING ERROR:", error);
     res.status(500).json({ error: error.message });
   }
 };
