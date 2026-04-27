@@ -408,10 +408,27 @@ export const createBill = async (req, res) => {
       totalAmount = parseFloat((totalBeforeDiscount - discountAmount).toFixed(2));
     }
 
+    // 🧾 Get next sequential bill number for this shop
+    const lastBill = await Bill.findOne({
+      where: { shop_id: shopId },
+      order: [['id', 'DESC']],
+      attributes: ['bill_number'],
+      transaction
+    });
+
+    let nextBillNumber = 1;
+    if (lastBill && lastBill.bill_number) {
+      // Extract number from bill_number (handles both "123" and "BILL-123" formats)
+      const match = lastBill.bill_number.match(/\d+$/);
+      if (match) {
+        nextBillNumber = parseInt(match[0]) + 1;
+      }
+    }
+
     // 🧾 Create Bill with all fields
     const bill = await Bill.create(
       {
-        bill_number: `BILL-${Date.now()}`,
+        bill_number: nextBillNumber.toString(),
         subtotal_amount: subtotal,
         gst_percentage: gst_percentage || null,
         gst_amount: gstAmount > 0 ? gstAmount : null,
