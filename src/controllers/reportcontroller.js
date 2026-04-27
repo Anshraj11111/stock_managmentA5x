@@ -1,7 +1,34 @@
 import { Op } from "sequelize";
 import sequelize from "../config/database.js";
 import Bill from "../models/billmodel.js";
-import Payment from "../models/paymentmodel.js";
+import BillPayment from "../models/billPaymentModel.js";
+
+// ✅ Simple in-memory cache with TTL
+const reportCache = new Map();
+const CACHE_TTL = 60 * 1000; // 1 minute cache
+
+const getCacheKey = (shopId, reportType, params = {}) => {
+  return `${shopId}:${reportType}:${JSON.stringify(params)}`;
+};
+
+const getFromCache = (key) => {
+  const cached = reportCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  reportCache.delete(key);
+  return null;
+};
+
+const setCache = (key, data) => {
+  reportCache.set(key, { data, timestamp: Date.now() });
+  
+  // Clean up old cache entries (keep max 100 entries)
+  if (reportCache.size > 100) {
+    const firstKey = reportCache.keys().next().value;
+    reportCache.delete(firstKey);
+  }
+};
 
 /**
  * 📊 DAILY SALES REPORT
@@ -9,6 +36,13 @@ import Payment from "../models/paymentmodel.js";
  */
 export const dailySalesReport = async (req, res) => {
   try {
+    // Check cache first
+    const cacheKey = getCacheKey(req.user.shop_id, 'daily');
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
@@ -34,7 +68,7 @@ export const dailySalesReport = async (req, res) => {
     // Payment mode breakup - with error handling
     let paymentModes = {};
     try {
-      const paymentBreakup = await Payment.findAll({
+      const paymentBreakup = await BillPayment.findAll({
         include: [{
           model: Bill,
           where: {
@@ -46,7 +80,7 @@ export const dailySalesReport = async (req, res) => {
         }],
         attributes: [
           'payment_mode',
-          [sequelize.fn('SUM', sequelize.col('amount')), 'total']
+          [sequelize.fn('SUM', sequelize.col('BillPayment.amount')), 'total']
         ],
         group: ['payment_mode'],
         raw: true
@@ -60,14 +94,19 @@ export const dailySalesReport = async (req, res) => {
       // Continue without payment breakup if there's an error
     }
 
-    res.json({
+    const result = {
       date: start.toISOString().slice(0, 10),
       total_bills: parseInt(billStats.total_bills) || 0,
       total_sales: parseFloat(billStats.total_sales) || 0,
       received_amount: parseFloat(billStats.received_amount) || 0,
       due_amount: parseFloat(billStats.due_amount) || 0,
       payment_breakup: paymentModes,
-    });
+    };
+
+    // Cache the result
+    setCache(cacheKey, result);
+
+    res.json(result);
   } catch (error) {
     console.error('Daily sales report error:', error);
     res.status(500).json({ error: error.message });
@@ -86,6 +125,13 @@ export const monthlySalesReport = async (req, res) => {
       return res.status(400).json({
         message: "month and year are required",
       });
+    }
+
+    // Check cache first
+    const cacheKey = getCacheKey(req.user.shop_id, 'monthly', { month, year });
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
     }
 
     const start = new Date(year, month - 1, 1);
@@ -107,14 +153,19 @@ export const monthlySalesReport = async (req, res) => {
       raw: true
     });
 
-    res.json({
+    const result = {
       month,
       year,
       total_bills: parseInt(billStats.total_bills) || 0,
       total_sales: parseFloat(billStats.total_sales) || 0,
       received_amount: parseFloat(billStats.received_amount) || 0,
       due_amount: parseFloat(billStats.due_amount) || 0,
-    });
+    };
+
+    // Cache the result
+    setCache(cacheKey, result);
+
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

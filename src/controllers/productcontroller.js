@@ -2,6 +2,42 @@ import Product from "../models/productmodel.js";
 import { clearShopCache } from "../middlewares/cache.js";
 import { Op } from "sequelize";
 
+// ✅ Simple in-memory cache for products with TTL
+const productsCache = new Map();
+const PRODUCTS_CACHE_TTL = 30 * 1000; // 30 seconds cache
+
+const getProductsCacheKey = (shopId, page, limit, search) => {
+  return `products:${shopId}:${page}:${limit}:${search || ''}`;
+};
+
+const getFromProductsCache = (key) => {
+  const cached = productsCache.get(key);
+  if (cached && Date.now() - cached.timestamp < PRODUCTS_CACHE_TTL) {
+    return cached.data;
+  }
+  productsCache.delete(key);
+  return null;
+};
+
+const setProductsCache = (key, data) => {
+  productsCache.set(key, { data, timestamp: Date.now() });
+  
+  // Clean up old cache entries (keep max 50 entries)
+  if (productsCache.size > 50) {
+    const firstKey = productsCache.keys().next().value;
+    productsCache.delete(firstKey);
+  }
+};
+
+const clearProductsCache = (shopId) => {
+  // Clear all cache entries for this shop
+  for (const key of productsCache.keys()) {
+    if (key.startsWith(`products:${shopId}:`)) {
+      productsCache.delete(key);
+    }
+  }
+};
+
 /**
  * ➕ ADD PRODUCT
  */
@@ -44,6 +80,7 @@ export const addProduct = async (req, res) => {
 
     // Clear cache for this shop
     clearShopCache(req.user.shop_id);
+    clearProductsCache(req.user.shop_id);
 
     res.status(201).json({
       message: "Product added successfully",
@@ -70,6 +107,13 @@ export const getProducts = async (req, res) => {
     
     // ✅ Search parameter
     const search = req.query.search || '';
+
+    // Check cache first
+    const cacheKey = getProductsCacheKey(req.user.shop_id, page, limit, search);
+    const cached = getFromProductsCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
 
     // ✅ Build where clause
     const whereClause = { shop_id: req.user.shop_id };
@@ -108,7 +152,7 @@ export const getProducts = async (req, res) => {
       raw: true // Faster serialization
     });
 
-    res.json({
+    const result = {
       products,
       pagination: {
         page,
@@ -117,7 +161,12 @@ export const getProducts = async (req, res) => {
         totalPages: Math.ceil(totalCount / limit),
         hasMore: offset + products.length < totalCount
       }
-    });
+    };
+
+    // Cache the result
+    setProductsCache(cacheKey, result);
+
+    res.json(result);
   } catch (error) {
     console.error("GET PRODUCTS ERROR:", error);
     res.status(500).json({ error: error.message });
@@ -208,6 +257,7 @@ export const updateProduct = async (req, res) => {
 
     // Clear cache for this shop
     clearShopCache(req.user.shop_id);
+    clearProductsCache(req.user.shop_id);
 
     console.log("✅ Product updated successfully");
     res.json({ message: "Product updated successfully" });
@@ -239,6 +289,7 @@ export const deleteProduct = async (req, res) => {
 
     // Clear cache for this shop
     clearShopCache(req.user.shop_id);
+    clearProductsCache(req.user.shop_id);
 
     res.json({ message: "Product deleted successfully" });
   } catch (error) {
