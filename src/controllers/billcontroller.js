@@ -726,12 +726,16 @@ export const getRecentBills = async (req, res) => {
     const bills = await Bill.findAll({
       where: { shop_id: req.user.shop_id },
       order: [["createdAt", "DESC"]],
-      limit: 10,
+      limit: 20,
       attributes: [
         "id",
         "bill_number",
         "total_amount",
+        "paid_amount",
+        "due_amount",
         "status",
+        "customer_name",
+        "customer_phone",
         "createdAt",
       ],
     });
