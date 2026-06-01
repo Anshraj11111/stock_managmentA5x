@@ -38,6 +38,7 @@ const allowedOrigins = [
   "http://localhost:5174", // Vite dev server alternate port
   "https://stock-managmentfrontend.vercel.app",
   "https://stock-managment-frontend.vercel.app",
+  "https://stocksaas.a5x.in", // Production custom domain
 ];
 
 app.use(
