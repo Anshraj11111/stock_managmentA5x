@@ -7,12 +7,15 @@ import "./models/usermodel.js";
 import "./models/productmodel.js";
 import "./models/billmodel.js";
 import "./models/billItemmodel.js";
+import "./models/billPaymentModel.js";
 import "./models/paymentmodel.js";
 import "./models/adminmodel.js";
 import "./models/customerModel.js";
 import "./models/customerLedgerModel.js";
 import "./models/subscriptionHistoryModel.js";
 import "./models/adminSettingsModel.js";
+import "./models/quotationModel.js";
+import "./models/quotationItemModel.js";
 
 import app from "./app.js";
 import sequelize from "./config/database.js";
