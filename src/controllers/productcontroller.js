@@ -38,6 +38,9 @@ const clearProductsCache = (shopId) => {
   }
 };
 
+// Clear ALL products cache (e.g. on server restart)
+productsCache.clear();
+
 /**
  * ➕ ADD PRODUCT
  */
@@ -102,7 +105,7 @@ export const getProducts = async (req, res) => {
 
     // ✅ Pagination parameters
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50; // Default 50 items per page
+    const limit = Math.min(parseInt(req.query.limit) || 1000, 5000); // max 5000 per request
     const offset = (page - 1) * limit;
     
     // ✅ Search parameter

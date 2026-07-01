@@ -3,20 +3,48 @@ import Payment from '../models/paymentmodel.js';
 import SubscriptionHistory from '../models/subscriptionHistoryModel.js';
 import AdminSettings from '../models/adminSettingsModel.js';
 
-// Subscription plans configuration
+// ─────────────────────────────────────────────────────────────
+// Subscription Plans (Updated June 2026)
+// ─────────────────────────────────────────────────────────────
 const PLANS = {
-  trial: { duration: 31, price: 0, features: ['all'] },
-  deposit: { price: 100 },
-  basic: [
-    { duration: 7, months: 7, price: 7999, features: ['dashboard', 'products', 'billing'] },
-    { duration: 9, months: 9, price: 6899, features: ['dashboard', 'products', 'billing'] },
-    { duration: 12, months: 12, price: 9999, features: ['dashboard', 'products', 'billing'] }
-  ],
-  premium: [
-    { duration: 7, months: 7, price: 9499, features: ['all'] },
-    { duration: 9, months: 9, price: 8399, features: ['all'] },
-    { duration: 12, months: 12, price: 11499, features: ['all'] }
-  ]
+  trial: {
+    duration: 30,   // days
+    price: 0,
+    label: 'Free Trial',
+    description: '30 Days Free – No Credit Card Required',
+    features: ['all']
+  },
+  starter: {
+    monthly: { price: 199,  duration_months: 1  },
+    yearly:  { price: 1999, duration_months: 12 },
+    label: 'Starter',
+    features: ['dashboard', 'products', 'billing', 'inventory', 'customers'],
+    target: ['Kirana', 'General Store', 'Mobile Shop', 'Small Retail']
+  },
+  business: {
+    monthly: { price: 399,  duration_months: 1  },
+    yearly:  { price: 3999, duration_months: 12 },
+    label: 'Business',
+    popular: true,
+    features: ['dashboard', 'products', 'billing', 'inventory', 'customers',
+               'reports', 'profit_analytics', 'staff', 'purchase_tracking', 'advanced_inventory'],
+    target: ['Hardware', 'Electrical', 'Medical', 'Wholesale Shops']
+  },
+  premium: {
+    monthly: { price: 699,  duration_months: 1  },
+    yearly:  { price: 6999, duration_months: 12 },
+    label: 'Premium',
+    features: ['all'],
+    target: ['Multi Staff Shops', 'Large Stores', 'Distributors']
+  },
+  // 🚀 Launch Offer — lifetime locked for first 50 customers
+  founder: {
+    yearly: { price: 1499, duration_months: 12 },
+    label: 'Founder Offer',
+    limited_slots: 50,
+    description: 'Lifetime locked price – price never increases for early adopters',
+    features: ['all']
+  }
 };
 
 // Get available plans
@@ -53,9 +81,17 @@ export const getCurrentSubscription = async (req, res) => {
       daysRemaining = Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24));
     }
 
-    // Determine locked features
-    if (shop.subscription_plan && shop.subscription_plan.startsWith('basic')) {
-      featuresLocked = ['reports', 'staff', 'customers'];
+    // Determine locked features based on new plan structure
+    if (shop.subscription_plan) {
+      const plan = shop.subscription_plan;
+      if (plan.startsWith('starter')) {
+        // Starter: reports, staff, advanced analytics locked
+        featuresLocked = ['reports', 'staff', 'profit_analytics', 'purchase_tracking', 'advanced_inventory', 'voice_commands', 'bulk_import', 'whatsapp'];
+      } else if (plan.startsWith('business')) {
+        // Business: voice, bulk import, whatsapp locked
+        featuresLocked = ['voice_commands', 'bulk_import', 'whatsapp'];
+      }
+      // premium / founder — nothing locked
     }
 
     // Check deposit refund eligibility (2 months after deposit)
@@ -104,22 +140,24 @@ export const initiatePayment = async (req, res) => {
     let amount = 0;
     let planName = '';
 
-    // Determine amount and plan name
-    if (plan_type === 'deposit') {
-      amount = 100;
-      planName = 'deposit';
-    } else if (plan_type === 'basic' || plan_type === 'premium') {
-      const planList = PLANS[plan_type];
-      const selectedPlan = planList.find(p => p.duration === parseInt(duration));
-      
-      if (!selectedPlan) {
-        return res.status(400).json({ error: 'Invalid plan selected' });
+    // Determine amount and plan name — new plan structure
+    const billingCycle = req.body.billing_cycle || duration; // 'monthly' or 'yearly'
+
+    if (plan_type === 'starter' || plan_type === 'business' || plan_type === 'premium' || plan_type === 'founder') {
+      const planDef = PLANS[plan_type];
+      if (!planDef) {
+        return res.status(400).json({ error: 'Invalid plan type' });
       }
 
-      amount = selectedPlan.price;
-      planName = `${plan_type}_${duration}m`;
+      const cycle = planDef[billingCycle];
+      if (!cycle) {
+        return res.status(400).json({ error: `Invalid billing cycle. Use 'monthly' or 'yearly'` });
+      }
+
+      amount   = cycle.price;
+      planName = `${plan_type}_${billingCycle}`;
     } else {
-      return res.status(400).json({ error: 'Invalid plan type' });
+      return res.status(400).json({ error: 'Invalid plan type. Use: starter, business, premium, founder' });
     }
 
     console.log('Creating payment record:', { shop_id: shop.id, payment_type: plan_type, plan_name: planName, amount });
@@ -127,7 +165,7 @@ export const initiatePayment = async (req, res) => {
     // Create payment record
     const payment = await Payment.create({
       shopId: shop.id,
-      paymentType: plan_type === 'deposit' ? 'deposit' : 'subscription',
+      paymentType: 'subscription',
       planName: planName,
       amount: amount,
       verificationStatus: 'pending'
@@ -206,16 +244,20 @@ export const checkFeatureAccess = async (req, res) => {
       return res.status(404).json({ error: 'Shop not found' });
     }
 
-    const lockedFeatures = ['reports', 'staff', 'customers'];
+    // Feature lock matrix per plan
+    const starterLocked   = ['reports', 'staff', 'profit_analytics', 'purchase_tracking', 'advanced_inventory', 'voice_commands', 'bulk_import', 'whatsapp'];
+    const businessLocked  = ['voice_commands', 'bulk_import', 'whatsapp'];
+    // premium / founder — nothing locked
+
     let hasAccess = true;
     let reason = '';
 
     // Check if trial expired
-    if (shop.subscription_plan === 'trial' || !shop.subscription_plan) {
+    if (!shop.subscription_plan || shop.subscription_plan === 'trial') {
       const trialEnd = new Date(shop.trial_end_date);
-      if (new Date() > trialEnd && !shop.deposit_paid) {
+      if (new Date() > trialEnd) {
         hasAccess = false;
-        reason = 'Trial expired. Please pay ₹100 deposit to continue.';
+        reason = 'Trial expired. Please subscribe to continue.';
       }
     }
 
@@ -224,7 +266,7 @@ export const checkFeatureAccess = async (req, res) => {
       const endDate = new Date(shop.subscription_end_date);
       if (new Date() > endDate) {
         hasAccess = false;
-        reason = 'Subscription expired. Please renew your subscription.';
+        reason = 'Subscription expired. Please renew.';
       }
     }
 
@@ -234,9 +276,13 @@ export const checkFeatureAccess = async (req, res) => {
       reason = shop.suspension_reason || 'Account suspended. Contact admin.';
     }
 
-    // Check feature lock for basic plan
-    if (shop.subscription_plan && shop.subscription_plan.startsWith('basic')) {
-      if (lockedFeatures.includes(feature)) {
+    // Feature lock checks
+    if (hasAccess && shop.subscription_plan) {
+      const plan = shop.subscription_plan;
+      if (plan.startsWith('starter') && starterLocked.includes(feature)) {
+        hasAccess = false;
+        reason = `Upgrade to Business or Premium to access ${feature}`;
+      } else if (plan.startsWith('business') && businessLocked.includes(feature)) {
         hasAccess = false;
         reason = `Upgrade to Premium to access ${feature}`;
       }
