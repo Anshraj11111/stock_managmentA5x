@@ -90,8 +90,8 @@ const sequelize = new Sequelize(
   process.env.MYSQLUSER,
   process.env.MYSQLPASSWORD,
   {
-    host: process.env.MYSQLHOST,
-    port: process.env.MYSQLPORT || 4000,
+    host:    process.env.MYSQLHOST,
+    port:    process.env.MYSQLPORT || 4000,
     dialect: "mysql",
     logging: false,
 
@@ -100,13 +100,27 @@ const sequelize = new Sequelize(
         require: true,
         rejectUnauthorized: false,
       },
+      // ✅ Keep connections alive — avoids reconnect latency
+      connectTimeout: 30000,
     },
 
     pool: {
-      max: 10,
-      min: 2,
-      acquire: 60000,
-      idle: 10000,
+      max:     15,     // More concurrent connections
+      min:     3,      // Keep 3 warm (avoids cold-start latency)
+      acquire: 30000,  // Reduced from 60s — fail faster
+      idle:    20000,  // Keep idle longer — reuse warm connections
+      evict:   30000,  // Check for idle connections every 30s
+    },
+
+    // ✅ Query optimizations
+    define: {
+      underscored: false,
+      timestamps:  true,
+    },
+    
+    // ✅ Retry on connection errors
+    retry: {
+      max: 3,
     },
   }
 );

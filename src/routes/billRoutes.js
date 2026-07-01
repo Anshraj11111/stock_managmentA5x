@@ -13,8 +13,8 @@ router.use(shopMiddleware);
 router.post("/", createBill);
 router.post("/preview", previewBill); // No cache for preview (POST request)
 router.post("/:id/pay", payDue);
-router.get("/recent", cacheMiddleware(5), getRecentBills); // Cache for 5 seconds
-router.get("/stats", cacheMiddleware(5), getBillStats); // Cache for 5 seconds
-router.get("/:id", cacheMiddleware(5), getBillById); // Get single bill by ID
+router.get("/recent", cacheMiddleware(30), getRecentBills);   // 30s
+router.get("/stats",  cacheMiddleware(30), getBillStats);      // 30s
+router.get("/:id",    cacheMiddleware(30), getBillById);       // 30s
 
 export default router;

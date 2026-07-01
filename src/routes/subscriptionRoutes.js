@@ -7,25 +7,22 @@ import {
   checkFeatureAccess
 } from '../controllers/subscriptionController.js';
 import authMiddleware from '../middlewares/authmiddleware.js';
+import { cacheMiddleware } from '../middlewares/cache.js';
 
 const router = express.Router();
 
-// Get available plans - NO authentication required (public)
-router.get('/plans', getPlans);
+// Plans — public, cache 5 min (plans change rarely)
+router.get('/plans', cacheMiddleware(300), getPlans);
 
-// All other routes require authentication
 router.use(authMiddleware);
 
-// Get current subscription
-router.get('/current', getCurrentSubscription);
+// Current subscription — cache 60s (changes only on admin action)
+router.get('/current', cacheMiddleware(60), getCurrentSubscription);
 
-// Initiate payment
 router.post('/initiate-payment', initiatePayment);
-
-// Submit payment proof
 router.post('/submit-payment', submitPaymentProof);
 
-// Check feature access
-router.get('/feature-access/:feature', checkFeatureAccess);
+// Feature access — cache 30s per user
+router.get('/feature-access/:feature', cacheMiddleware(30), checkFeatureAccess);
 
 export default router;

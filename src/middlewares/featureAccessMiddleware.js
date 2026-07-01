@@ -1,4 +1,4 @@
-import Shop from '../models/shopmodel.js';
+import { getCachedShop } from './authmiddleware.js';
 
 // ─────────────────────────────────────────────────────────────
 // Feature Lock Matrix — New Plan Structure (June 2026)
@@ -17,7 +17,7 @@ const BUSINESS_LOCKED = ['voice_commands', 'bulk_import', 'whatsapp'];
 export const checkFeatureAccess = (feature) => {
   return async (req, res, next) => {
     try {
-      const shop = await Shop.findByPk(req.user.shop_id);
+      const shop = req.shopData || req.shop || await getCachedShop(req.user.shop_id);
 
       if (!shop) {
         return res.status(404).json({ error: 'Shop not found' });

@@ -11,31 +11,18 @@ import {
   deleteLedgerEntry,
 } from "../controllers/customerController.js";
 import authMiddleware from "../middlewares/authmiddleware.js";
+import { cacheMiddleware } from "../middlewares/cache.js";
 
 const router = express.Router();
 
-// All routes require authentication
 router.use(authMiddleware);
 
-// GET all customers (shop-wise)
-router.get("/", getCustomers);
-
-// SEARCH customer by phone
-router.get("/search", searchCustomerByPhone);
-
-// GET single customer with ledger
-router.get("/:id", getCustomerById);
-
-// CREATE or UPDATE customer
-router.post("/", createOrUpdateCustomer);
-
-// RECORD payment
+router.get("/",          cacheMiddleware(30), getCustomers);           // 30s
+router.get("/search",    searchCustomerByPhone);                       // no cache (real-time search)
+router.get("/:id",       cacheMiddleware(30), getCustomerById);        // 30s
+router.post("/",         createOrUpdateCustomer);
 router.post("/:id/payment", recordPayment);
-
-// DELETE ledger entry
 router.delete("/:id/ledger/:entryId", deleteLedgerEntry);
-
-// DELETE customer (only if no dues)
-router.delete("/:id", deleteCustomer);
+router.delete("/:id",    deleteCustomer);
 
 export default router;

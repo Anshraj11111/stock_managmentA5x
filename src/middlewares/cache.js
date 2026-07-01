@@ -1,38 +1,42 @@
-// Simple in-memory cache middleware
-const cache = new Map();
+// ─────────────────────────────────────────────────────────────────────────────
+// Improved in-memory response cache with LRU eviction
+// ─────────────────────────────────────────────────────────────────────────────
+const cache   = new Map();
+const MAX_ENTRIES = 500; // up from 100
 
+/**
+ * cacheMiddleware(duration) — GET-only response cache
+ * Cache key = shopId + full URL (includes query params)
+ * On cache hit: returns immediately, no DB hit
+ */
 export const cacheMiddleware = (duration = 30) => {
   return (req, res, next) => {
-    // Only cache GET requests
-    if (req.method !== 'GET') {
-      return next();
-    }
+    if (req.method !== 'GET') return next();
 
-    // Create cache key from URL and user
-    const key = `${req.user?.shop_id || 'guest'}_${req.originalUrl}`;
-    
-    // Check if cached
+    const key = `${req.user?.shop_id || 'pub'}_${req.originalUrl}`;
+
     const cached = cache.get(key);
-    if (cached && Date.now() - cached.timestamp < duration * 1000) {
+    if (cached && Date.now() - cached.ts < duration * 1000) {
+      // Move to end (LRU touch)
+      cache.delete(key);
+      cache.set(key, cached);
+      res.setHeader('X-Cache', 'HIT');
       return res.json(cached.data);
     }
 
-    // Store original json function
+    // Intercept response
     const originalJson = res.json.bind(res);
-    
-    // Override json function to cache response
     res.json = (data) => {
-      cache.set(key, {
-        data,
-        timestamp: Date.now()
-      });
-      
-      // Clean old cache entries (keep last 100)
-      if (cache.size > 100) {
-        const firstKey = cache.keys().next().value;
-        cache.delete(firstKey);
+      // Only cache successful responses
+      if (res.statusCode < 400) {
+        // LRU eviction — remove oldest when full
+        if (cache.size >= MAX_ENTRIES) {
+          const oldestKey = cache.keys().next().value;
+          cache.delete(oldestKey);
+        }
+        cache.set(key, { data, ts: Date.now() });
       }
-      
+      res.setHeader('X-Cache', 'MISS');
       return originalJson(data);
     };
 
@@ -40,16 +44,22 @@ export const cacheMiddleware = (duration = 30) => {
   };
 };
 
-// Clear cache for specific shop
+// ─── Cache invalidation helpers ──────────────────────────────────────────────
+
+/** Clear all cached responses for a shop */
 export const clearShopCache = (shopId) => {
+  const prefix = `${shopId}_`;
   for (const key of cache.keys()) {
-    if (key.startsWith(`${shopId}_`)) {
-      cache.delete(key);
-    }
+    if (key.startsWith(prefix)) cache.delete(key);
   }
 };
 
-// Clear all cache
-export const clearAllCache = () => {
-  cache.clear();
-};
+/** Clear all cache */
+export const clearAllCache = () => cache.clear();
+
+/** Get cache stats */
+export const getCacheStats = () => ({
+  size: cache.size,
+  maxSize: MAX_ENTRIES,
+  keys: [...cache.keys()].slice(0, 20), // first 20 for debugging
+});

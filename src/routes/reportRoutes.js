@@ -12,9 +12,9 @@ const router = express.Router();
 // 🔐 Protected reports
 router.use(authMiddleware);
 
-// 📊 Reports with caching
-router.get("/daily", cacheMiddleware(30), dailySalesReport); // Cache for 30 seconds
-router.get("/monthly", cacheMiddleware(60), monthlySalesReport); // Cache for 60 seconds
-router.get("/date-range", cacheMiddleware(30), dateRangeSalesReport); // Cache for 30 seconds
+// 📊 Reports with better caching (reports don't change frequently)
+router.get("/daily",      cacheMiddleware(120), dailySalesReport);      // 2 min
+router.get("/monthly",    cacheMiddleware(300), monthlySalesReport);     // 5 min
+router.get("/date-range", cacheMiddleware(120), dateRangeSalesReport);   // 2 min
 
 export default router;
