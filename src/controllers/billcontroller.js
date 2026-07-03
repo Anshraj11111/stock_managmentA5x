@@ -779,3 +779,190 @@ export const getBillStats = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+/**
+ * ======================================
+ * EDIT BILL — update items, prices, customer, discounts
+ * ======================================
+ * Rules:
+ *  - Only PAID / PARTIAL / UNPAID bills can be edited (not CANCELLED)
+ *  - Stock is re-reconciled: old items are rolled back, new items are deducted
+ *  - Totals are recalculated from the new items
+ */
+export const editBill = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { id } = req.params;
+    const shopId  = req.user.shop_id;
+    const {
+      items,
+      customer_name,
+      customer_phone,
+      gst_percentage,
+      discount_type,
+      discount_value,
+    } = req.body;
+
+    // ── 1. Fetch bill ──────────────────────────────────────────────────────
+    const bill = await Bill.findOne({
+      where: { id, shop_id: shopId },
+      transaction,
+    });
+
+    if (!bill) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Bill not found" });
+    }
+
+    if (bill.status === "CANCELLED") {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Cannot edit a cancelled bill" });
+    }
+
+    // ── 2. Rollback old stock ──────────────────────────────────────────────
+    const oldItems = await BillItem.findAll({
+      where: { bill_id: bill.id },
+      transaction,
+    });
+
+    for (const oldItem of oldItems) {
+      if (oldItem.product_id) {
+        await Product.update(
+          { stock_quantity: sequelize.literal(`stock_quantity + ${oldItem.quantity}`) },
+          { where: { id: oldItem.product_id, shop_id: shopId }, transaction }
+        );
+      }
+    }
+
+    // ── 3. Delete old items ────────────────────────────────────────────────
+    await BillItem.destroy({ where: { bill_id: bill.id }, transaction });
+
+    // ── 4. Validate & create new items ────────────────────────────────────
+    if (!items || items.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "At least one item is required" });
+    }
+
+    const productIds = items.filter(i => i.product_id).map(i => i.product_id);
+    let productMap = new Map();
+
+    if (productIds.length > 0) {
+      const products = await Product.findAll({
+        where: { id: productIds, shop_id: shopId },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      productMap = new Map(products.map(p => [p.id, p]));
+    }
+
+    let subtotal = 0;
+    const newBillItems = [];
+    const stockUpdates = [];
+
+    for (const item of items) {
+      const quantity = parseFloat(item.quantity) || 1;
+      let price    = parseFloat(item.price);
+      let itemName = item.item_name || item.name || '';
+
+      if (item.product_id) {
+        const product = productMap.get(item.product_id);
+        if (!product) {
+          await transaction.rollback();
+          return res.status(404).json({ message: `Product not found (ID: ${item.product_id})` });
+        }
+        if (parseFloat(product.stock_quantity) < quantity) {
+          await transaction.rollback();
+          return res.status(400).json({ message: `Insufficient stock for: ${product.product_name}` });
+        }
+        if (isNaN(price)) price = product.selling_price;
+        itemName = itemName || product.product_name;
+        stockUpdates.push({ id: product.id, qty: quantity });
+      }
+
+      if (!itemName) { await transaction.rollback(); return res.status(400).json({ message: "item_name required" }); }
+      if (isNaN(price) || price < 0) { await transaction.rollback(); return res.status(400).json({ message: `Invalid price for ${itemName}` }); }
+
+      const total = parseFloat((price * quantity).toFixed(2));
+      subtotal += total;
+
+      newBillItems.push({
+        bill_id:    bill.id,
+        product_id: item.product_id || null,
+        quantity,
+        price,
+      });
+    }
+
+    // ── 5. Deduct new stock ────────────────────────────────────────────────
+    for (const upd of stockUpdates) {
+      await Product.update(
+        { stock_quantity: sequelize.literal(`stock_quantity - ${upd.qty}`) },
+        { where: { id: upd.id, shop_id: shopId }, transaction }
+      );
+    }
+
+    // ── 6. Bulk create new items ───────────────────────────────────────────
+    await BillItem.bulkCreate(newBillItems, { transaction });
+
+    // ── 7. Recalculate totals ──────────────────────────────────────────────
+    let gstAmount      = 0;
+    let totalAmount    = subtotal;
+    let discountAmount = 0;
+    let discountPct    = null;
+
+    const gstPct = parseFloat(gst_percentage) || 0;
+    if (gstPct > 0) {
+      gstAmount   = parseFloat(((subtotal * gstPct) / 100).toFixed(2));
+      totalAmount = parseFloat((subtotal + gstAmount).toFixed(2));
+    }
+
+    const discVal = parseFloat(discount_value) || 0;
+    if (discount_type && discVal > 0) {
+      if (discount_type === 'percentage') {
+        discountAmount = parseFloat(((totalAmount * discVal) / 100).toFixed(2));
+        discountPct    = discVal;
+      } else {
+        discountAmount = parseFloat(discVal.toFixed(2));
+        discountPct    = parseFloat(((discountAmount / totalAmount) * 100).toFixed(2));
+      }
+      if (discountAmount > totalAmount) discountAmount = totalAmount;
+      totalAmount = parseFloat((totalAmount - discountAmount).toFixed(2));
+    }
+
+    // ── 8. Update bill record ──────────────────────────────────────────────
+    const currentPaid = parseFloat(bill.paid_amount) || 0;
+    const newDue      = Math.max(0, totalAmount - currentPaid);
+
+    await bill.update(
+      {
+        customer_name:    customer_name ?? bill.customer_name,
+        customer_phone:   customer_phone ?? bill.customer_phone,
+        subtotal_amount:  subtotal,
+        gst_percentage:   gstPct || null,
+        gst_amount:       gstAmount > 0 ? gstAmount : null,
+        discount_type:    discount_type || null,
+        discount_percentage: discountPct,
+        discount_amount:  discountAmount > 0 ? discountAmount : null,
+        total_amount:     totalAmount,
+        due_amount:       newDue,
+        status:           newDue <= 0 ? 'PAID' : currentPaid === 0 ? 'UNPAID' : 'PARTIAL',
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+    clearShopCache(shopId);
+
+    res.json({
+      message:      "Bill updated successfully",
+      bill_id:      bill.id,
+      bill_number:  bill.bill_number,
+      total_amount: totalAmount,
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Edit bill error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
