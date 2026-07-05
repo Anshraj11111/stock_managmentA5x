@@ -152,19 +152,13 @@ export const generateInvoice = async (req, res) => {
     ];
     colDefs[5].w = (M + CW) - colDefs[5].x;
 
-    // Header row
+    // Header row — drawn by drawColHeader below
     const TH_H = 22;
-    doc.rect(M, Y, CW, TH_H).fill(BLUE);
-    colDefs.forEach(col => {
-      doc.font("Helvetica-Bold").fontSize(8.5).fillColor(WHITE)
-         .text(col.hdr, col.x + 4, Y + 7, { width: col.w - 8, align: col.align });
-    });
-    Y += TH_H;
 
     // Data rows — proper page break with PDFKit
     const gstPct = bill.gst_percentage || 0;
-    const ROW_H  = 20;
-    const PAGE_BOTTOM = PH - 100; // leave room for footer
+    const ROW_H  = 22; // slightly taller rows so text doesn't wrap
+    const PAGE_BOTTOM = PH - 100;
 
     const drawColHeader = (startY) => {
       doc.rect(M, startY, CW, TH_H).fill(BLUE);
@@ -176,7 +170,7 @@ export const generateInvoice = async (req, res) => {
     };
 
     let tableTop = Y;
-    Y = drawColHeader(Y);
+    Y = drawColHeader(Y); // draw once here only
 
     items.forEach((item, idx) => {
       if (Y + ROW_H > PAGE_BOTTOM) {
@@ -272,11 +266,12 @@ export const generateInvoice = async (req, res) => {
     hRule(Y);
     Y += 10;
 
-    // ── 11. PAYMENT DETAILS + SIGNATURE ─────────────────────────────────────
-    const PAY_W = hasBankInfo ? (CW - 10) / 2 : 0;
-    const SIG_X = hasBankInfo ? M + PAY_W + 10 : M;
-    const SIG_W = hasBankInfo ? CW - PAY_W - 10 : CW;
+    // ── 11. PAYMENT + SIGNATURE (right corner) ──────────────────────────────
+    const iPaid = parseFloat(bill.paid_amount || 0);
+    const iDue  = parseFloat(bill.due_amount  || 0);
+    const paySecTopY = Y;
 
+    // Left — Bank details
     if (hasBankInfo) {
       doc.font("Helvetica-Bold").fontSize(8.5).fillColor(LBLUE).text("Payment Details:", M, Y);
       let bY = Y + 14;
@@ -291,14 +286,24 @@ export const generateInvoice = async (req, res) => {
       bLine("Branch", shop.bank_branch);
       bLine("A/C No", shop.bank_account_number);
       bLine("IFSC",   shop.bank_ifsc);
-      if (shop.upi_id)
-        bLine("UPI", `${shop.upi_id}${shop.upi_name ? ` (${shop.upi_name})` : ""}`);
+      if (shop.upi_id) bLine("UPI", `${shop.upi_id}${shop.upi_name ? ` (${shop.upi_name})` : ""}`);
     }
 
-    // Signature
-    const sigBlockTop = Y;
+    // Paid / Due
+    let pdY = paySecTopY + (hasBankInfo ? 80 : 0);
+    if (iDue > 0.01) {
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(GREEN).text(`PAID: ${rupee(iPaid)}`, M, pdY); pdY += 14;
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(RED).text(`DUE: ${rupee(iDue)}`, M, pdY);
+    } else {
+      doc.font("Helvetica-Bold").fontSize(10).fillColor(GREEN).text(`TOTAL PAID: ${rupee(bill.total_amount)}`, M, pdY);
+    }
+
+    // Signature box — RIGHT CORNER
+    const sBoxX = M + CW - 130;
+    const sBoxY = paySecTopY;
+    doc.rect(sBoxX, sBoxY, 130, 60).lineWidth(0.5).strokeColor(BORD).stroke();
     doc.font("Helvetica").fontSize(8.5).fillColor(GREY)
-       .text("Authorised Signatory", SIG_X, sigBlockTop, { width: SIG_W, align: "center" });
+       .text("Authorised Signatory", sBoxX, sBoxY + 6, { width: 130, align: "center" });
 
     if (shop.signature_image) {
       try {
@@ -306,26 +311,35 @@ export const generateInvoice = async (req, res) => {
           shop.signature_image.replace(/^data:image\/\w+;base64,/, ""),
           "base64"
         );
-        doc.image(imgBuf, SIG_X + SIG_W / 2 - 35, sigBlockTop + 12, { fit: [70, 35] });
+        doc.image(imgBuf, sBoxX + 65 - 35, sBoxY + 18, { fit: [70, 28] });
       } catch (_) { /* skip */ }
     }
 
-    const sigLineY = sigBlockTop + 55;
-    doc.moveTo(SIG_X + 10, sigLineY).lineTo(SIG_X + SIG_W - 10, sigLineY)
+    doc.moveTo(sBoxX + 10, sBoxY + 50).lineTo(sBoxX + 120, sBoxY + 50)
        .lineWidth(0.5).strokeColor(BORD).stroke();
     const sigName = shop.authorized_signatory || shop.shop_name;
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(DARK)
-       .text(sigName, SIG_X, sigLineY + 4, { width: SIG_W, align: "center" });
+    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(DARK)
+       .text(sigName, sBoxX, sBoxY + 52, { width: 130, align: "center" });
 
-    // ── 12. FOOTER ───────────────────────────────────────────────────────────
-    const footerY = PH - 30;
-    hRule(footerY - 6);
-    doc.font("Helvetica").fontSize(7).fillColor(GREY)
-       .text(
-         `This is a computer-generated invoice. For queries contact: ${shop.owner_phone || shop.shop_name}`,
-         M, footerY,
-         { width: CW, align: "center" }
-       );
+    // ── 12. FOOTER — on EVERY page, pinned to bottom ─────────────────────────
+    doc.flushPages(); // flush buffered pages so we can iterate
+    const totalInvPages = doc.bufferedPageRange().count;
+    for (let i = 0; i < totalInvPages; i++) {
+      doc.switchToPage(i);
+      const footerY = PH - 22;
+      // Blue band
+      doc.rect(0, footerY, PW, 22).fill(BLUE);
+      // Shop name centered
+      doc.font("Helvetica-Bold").fontSize(8).fillColor(WHITE)
+         .text(shop.shop_name.toUpperCase(), M, footerY + 4, { width: CW, align: "center" });
+      // Tagline
+      doc.font("Helvetica").fontSize(6.5).fillColor("#bfdbfe")
+         .text(
+           `This is a computer-generated invoice  |  ${shop.owner_phone ? 'Ph: ' + shop.owner_phone : ''}  |  Page ${i + 1} of ${totalInvPages}`,
+           M, footerY + 13,
+           { width: CW, align: "center" }
+         );
+    }
 
     doc.end();
   } catch (error) {
