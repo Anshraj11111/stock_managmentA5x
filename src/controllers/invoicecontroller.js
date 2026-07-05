@@ -161,13 +161,36 @@ export const generateInvoice = async (req, res) => {
     });
     Y += TH_H;
 
-    // Data rows
+    // Data rows — proper page break with PDFKit
     const gstPct = bill.gst_percentage || 0;
+    const ROW_H  = 20;
+    const PAGE_BOTTOM = PH - 100; // leave room for footer
+
+    const drawColHeader = (startY) => {
+      doc.rect(M, startY, CW, TH_H).fill(BLUE);
+      colDefs.forEach(col => {
+        doc.font("Helvetica-Bold").fontSize(8.5).fillColor(WHITE)
+           .text(col.hdr, col.x + 4, startY + 7, { width: col.w - 8, align: col.align });
+      });
+      return startY + TH_H;
+    };
+
+    let tableTop = Y;
+    Y = drawColHeader(Y);
+
     items.forEach((item, idx) => {
-      const rowH = 20;
+      if (Y + ROW_H > PAGE_BOTTOM) {
+        // Close border on current page
+        doc.rect(M, tableTop, CW, Y - tableTop).lineWidth(0.5).strokeColor(BORD).stroke();
+        doc.addPage();
+        Y = M;
+        tableTop = Y;
+        Y = drawColHeader(Y);
+      }
+
       const rowBg = idx % 2 === 0 ? WHITE : BGGY;
-      doc.rect(M, Y, CW, rowH).fill(rowBg);
-      doc.moveTo(M, Y + rowH).lineTo(M + CW, Y + rowH)
+      doc.rect(M, Y, CW, ROW_H).fill(rowBg);
+      doc.moveTo(M, Y + ROW_H).lineTo(M + CW, Y + ROW_H)
          .strokeColor(BORD).lineWidth(0.3).stroke();
 
       const itemTotal = item.price * item.quantity;
@@ -185,12 +208,11 @@ export const generateInvoice = async (req, res) => {
            .fontSize(8.5).fillColor(DARK)
            .text(vals[col.key] || "", col.x + 4, Y + 6, { width: col.w - 8, align: col.align });
       });
-      Y += rowH;
+      Y += ROW_H;
     });
 
-    // Table outer border
-    doc.rect(M, Y - items.length * 20 - TH_H, CW, TH_H + items.length * 20)
-       .lineWidth(0.5).strokeColor(BORD).stroke();
+    // Close final table border
+    doc.rect(M, tableTop, CW, Y - tableTop).lineWidth(0.5).strokeColor(BORD).stroke();
 
     Y += 10;
 
