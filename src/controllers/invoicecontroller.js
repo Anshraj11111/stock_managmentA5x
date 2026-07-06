@@ -242,84 +242,131 @@ export const generateInvoice = async (req, res) => {
 
     Y += 6;
 
-    // Paid / Due summary
-    if (bill.paid_amount > 0 || bill.due_amount > 0) {
-      totalRow("Paid Amount", rupee(bill.paid_amount), false, false, GREEN);
-      if (bill.due_amount > 0)
-        totalRow("Due Amount", rupee(bill.due_amount), true, false, RED);
-    }
+    // Skip paid/due display in PDF - show only grand total
 
     Y += 16;
 
     // ── 10. TERMS & PAYMENT ──────────────────────────────────────────────────
-    const effectiveTerms = shop.terms_and_conditions;
-    const hasBankInfo    = shop.bank_name || shop.bank_account_number || shop.upi_id;
+    const effectiveTerms = shop?.terms_and_conditions;
+    const hasBankInfo    = shop?.bank_name || shop?.bank_account_number || shop?.upi_id;
 
-    if (effectiveTerms) {
-      doc.font("Helvetica-Bold").fontSize(8.5).fillColor(LBLUE).text("Terms & Conditions:", M, Y);
-      Y += 14;
-      doc.font("Helvetica").fontSize(8).fillColor(GREY)
-         .text(effectiveTerms, M, Y, { width: CW * 0.55, lineGap: 2 });
-      Y += 50;
+    // Ensure we have enough space for terms, if not add a new page
+    const termsHeight = effectiveTerms ? 70 : 30; // Estimated height for terms section
+    if (Y + termsHeight > PAGE_BOTTOM) {
+      doc.addPage();
+      Y = M;
     }
 
+    if (effectiveTerms && effectiveTerms.trim()) {
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(LBLUE).text("Terms & Conditions:", M, Y);
+      Y += 16;
+      
+      // Better terms formatting with proper spacing
+      const termLines = effectiveTerms.split('\n').filter(line => line.trim());
+      termLines.forEach(line => {
+        if (line.trim()) {
+          // Add bullet point and proper indentation
+          doc.font("Helvetica").fontSize(8).fillColor(DARK)
+             .text("•", M, Y, { width: 8 });
+          doc.text(line.trim(), M + 12, Y, { width: CW * 0.55 - 12, lineGap: 1 });
+          Y += 14;
+        }
+      });
+      
+      // Add some standard terms if the provided terms are too short
+      if (termLines.length === 0 || (termLines.length === 1 && termLines[0].length < 30)) {
+        const defaultTerms = [
+          'All sales are final unless products are defective',
+          'Returns accepted within 7 days with original receipt', 
+          'Warranty terms as per manufacturer guidelines',
+          'Prices are subject to change without notice'
+        ];
+        
+        defaultTerms.forEach(term => {
+          doc.font("Helvetica").fontSize(8).fillColor(DARK)
+             .text("•", M, Y, { width: 8 });
+          doc.text(term, M + 12, Y, { width: CW * 0.55 - 12 });
+          Y += 14;
+        });
+      }
+    } else {
+      // Default terms if none provided
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(LBLUE).text("Terms & Conditions:", M, Y);
+      Y += 16;
+      
+      const defaultTerms = [
+        'Goods once sold will not be taken back',
+        'All sales are final unless products are defective',
+        'Returns accepted within 7 days with original receipt',
+        'Subject to local jurisdiction'
+      ];
+      
+      defaultTerms.forEach(term => {
+        doc.font("Helvetica").fontSize(8).fillColor(DARK)
+           .text("•", M, Y, { width: 8 });
+        doc.text(term, M + 12, Y, { width: CW * 0.55 - 12 });
+        Y += 14;
+      });
+    }
+
+    Y += 8;
+
     hRule(Y);
-    Y += 10;
+    Y += 12;
 
     // ── 11. PAYMENT + SIGNATURE (right corner) ──────────────────────────────
     const iPaid = parseFloat(bill.paid_amount || 0);
     const iDue  = parseFloat(bill.due_amount  || 0);
     const paySecTopY = Y;
 
-    // Left — Bank details
-    if (hasBankInfo) {
-      doc.font("Helvetica-Bold").fontSize(8.5).fillColor(LBLUE).text("Payment Details:", M, Y);
-      let bY = Y + 14;
-      const bLine = (label, val) => {
-        if (!val) return;
-        doc.font("Helvetica").fontSize(8).fillColor(DARK)
-           .text(`${label}: `, M, bY, { continued: true });
-        doc.fillColor(GREY).text(val);
-        bY += 12;
-      };
-      bLine("Bank",   shop.bank_name);
-      bLine("Branch", shop.bank_branch);
-      bLine("A/C No", shop.bank_account_number);
-      bLine("IFSC",   shop.bank_ifsc);
-      if (shop.upi_id) bLine("UPI", `${shop.upi_id}${shop.upi_name ? ` (${shop.upi_name})` : ""}`);
+    // Check if we need more space for payment section
+    const paymentHeight = hasBankInfo ? 100 : 60;
+    if (Y + paymentHeight > PAGE_BOTTOM) {
+      doc.addPage();
+      Y = M;
+      paySecTopY = Y;
     }
 
-    // Paid / Due
-    let pdY = paySecTopY + (hasBankInfo ? 80 : 0);
-    if (iDue > 0.01) {
-      doc.font("Helvetica-Bold").fontSize(9).fillColor(GREEN).text(`PAID: ${rupee(iPaid)}`, M, pdY); pdY += 14;
-      doc.font("Helvetica-Bold").fontSize(9).fillColor(RED).text(`DUE: ${rupee(iDue)}`, M, pdY);
-    } else {
-      doc.font("Helvetica-Bold").fontSize(10).fillColor(GREEN).text(`TOTAL PAID: ${rupee(bill.total_amount)}`, M, pdY);
+    // Left — Bank details only (no paid/due amounts)
+    if (hasBankInfo) {
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(LBLUE).text("Payment Details:", M, Y);
+      let bY = Y + 16;
+      const bLine = (label, val) => {
+        if (!val) return;
+        doc.font("Helvetica").fontSize(8.5).fillColor(DARK)
+           .text(`${label}: `, M, bY, { continued: true });
+        doc.fillColor(GREY).text(val);
+        bY += 14;
+      };
+      bLine("Bank",   shop?.bank_name);
+      bLine("Branch", shop?.bank_branch);
+      bLine("A/C No", shop?.bank_account_number);
+      bLine("IFSC",   shop?.bank_ifsc);
+      if (shop?.upi_id) bLine("UPI", `${shop.upi_id}${shop.upi_name ? ` (${shop.upi_name})` : ""}`);
     }
 
     // Signature box — RIGHT CORNER
     const sBoxX = M + CW - 130;
     const sBoxY = paySecTopY;
-    doc.rect(sBoxX, sBoxY, 130, 60).lineWidth(0.5).strokeColor(BORD).stroke();
+    doc.rect(sBoxX, sBoxY, 130, 65).lineWidth(0.5).strokeColor(BORD).stroke();
     doc.font("Helvetica").fontSize(8.5).fillColor(GREY)
-       .text("Authorised Signatory", sBoxX, sBoxY + 6, { width: 130, align: "center" });
+       .text("Authorised Signatory", sBoxX, sBoxY + 8, { width: 130, align: "center" });
 
-    if (shop.signature_image) {
+    if (shop?.signature_image) {
       try {
         const imgBuf = Buffer.from(
           shop.signature_image.replace(/^data:image\/\w+;base64,/, ""),
           "base64"
         );
-        doc.image(imgBuf, sBoxX + 65 - 35, sBoxY + 18, { fit: [70, 28] });
+        doc.image(imgBuf, sBoxX + 65 - 35, sBoxY + 22, { fit: [70, 30] });
       } catch (_) { /* skip */ }
     }
 
-    doc.moveTo(sBoxX + 10, sBoxY + 50).lineTo(sBoxX + 120, sBoxY + 50)
+    doc.moveTo(sBoxX + 10, sBoxY + 52).lineTo(sBoxX + 120, sBoxY + 52)
        .lineWidth(0.5).strokeColor(BORD).stroke();
-    const sigName = shop.authorized_signatory || shop.shop_name;
+    const sigName = shop?.authorized_signatory || shop?.shop_name || 'Authorized Signatory';
     doc.font("Helvetica-Bold").fontSize(8.5).fillColor(DARK)
-       .text(sigName, sBoxX, sBoxY + 52, { width: 130, align: "center" });
+       .text(sigName, sBoxX, sBoxY + 55, { width: 130, align: "center" });
 
     // ── 12. FOOTER — on EVERY page, pinned to bottom ─────────────────────────
     doc.flushPages(); // flush buffered pages so we can iterate

@@ -718,7 +718,13 @@ export const editBill = async (req, res) => {
       if (isNaN(price) || price < 0)       { await transaction.rollback(); return res.status(400).json({ message: `Invalid price for ${itemName}` }); }
 
       subtotal += parseFloat((price * quantity).toFixed(2));
-      newBillItems.push({ bill_id: bill.id, product_id: item.product_id || null, quantity, price });
+      newBillItems.push({ 
+        bill_id: bill.id, 
+        product_id: item.product_id || null, 
+        item_name: !item.product_id ? itemName : null, // ✅ Store item_name for manual items
+        quantity, 
+        price 
+      });
     }
 
     // 5. Deduct new stock
@@ -732,7 +738,7 @@ export const editBill = async (req, res) => {
     // 6. Bulk create new items
     await BillItem.bulkCreate(newBillItems, { transaction });
 
-    // 7. Recalculate totals
+    // 7. Recalculate totals first
     const gstPct  = parseFloat(gst_percentage) || 0;
     let gstAmount = 0;
     let totalAmount = subtotal;
@@ -756,10 +762,16 @@ export const editBill = async (req, res) => {
       totalAmount = parseFloat((totalAmount - discountAmount).toFixed(2));
     }
 
-    // 8. Update bill record
-    const currentPaid = parseFloat(bill.paid_amount) || 0;
-    const newDue      = Math.max(0, totalAmount - currentPaid);
+    // 8. Update payment records to match new total
+    await BillPayment.destroy({ where: { bill_id: bill.id }, transaction });
+    await BillPayment.create({
+      bill_id: bill.id,
+      amount: totalAmount,
+      payment_mode: 'cash', // Default to cash for edited bills
+      reference_id: null
+    }, { transaction });
 
+    // 9. Update bill record - set new total as paid amount (no due)
     await bill.update(
       {
         customer_name:       customer_name ?? bill.customer_name,
@@ -771,8 +783,9 @@ export const editBill = async (req, res) => {
         discount_percentage: discountPct,
         discount_amount:     discountAmount > 0 ? discountAmount : null,
         total_amount:        totalAmount,
-        due_amount:          newDue,
-        status:              newDue <= 0 ? "PAID" : currentPaid === 0 ? "UNPAID" : "PARTIAL",
+        paid_amount:         totalAmount, // ✅ Set full amount as paid
+        due_amount:          0,           // ✅ No due amount
+        status:              "PAID",      // ✅ Always mark as paid after edit
       },
       { transaction }
     );
@@ -789,6 +802,10 @@ export const editBill = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("Edit bill error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ 
+      error: error.message,
+      details: error.name === 'SequelizeValidationError' ? error.errors : undefined
+    });
   }
 };
