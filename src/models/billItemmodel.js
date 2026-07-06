@@ -12,6 +12,10 @@ const BillItem = sequelize.define("BillItem", {
     price:{
         type: DataTypes.FLOAT,
         allowNull: false,
+    },
+    item_name: {
+        type: DataTypes.STRING,
+        allowNull: true, // For manual items that don't have product_id
     }
 }, {
   indexes: [

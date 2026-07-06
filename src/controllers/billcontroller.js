@@ -192,7 +192,7 @@ export const createBill = async (req, res) => {
         const qty   = parseFloat(item.quantity) || 1;
         if (price <= 0) throw new Error(`Invalid price for manual item: ${name}`);
         subtotal += parseFloat((price * qty).toFixed(2));
-        billItemsToCreate.push({ product_id: null, quantity: qty, price });
+        billItemsToCreate.push({ product_id: null, quantity: qty, price, item_name: name });
         continue;
       }
 
@@ -203,7 +203,7 @@ export const createBill = async (req, res) => {
       }
       const itemTotal = product.selling_price * item.quantity;
       subtotal += itemTotal;
-      billItemsToCreate.push({ product_id: product.id, quantity: item.quantity, price: product.selling_price });
+      billItemsToCreate.push({ product_id: product.id, quantity: item.quantity, price: product.selling_price, item_name: null });
       stockUpdates.push({ id: product.id, newStock: product.stock_quantity - item.quantity });
     }
 
@@ -579,7 +579,7 @@ export const getBillWithDetails = async (req, res) => {
     const items = (bill.BillItems || []).map((bi) => ({
       id:           bi.id,
       product_id:   bi.product_id,
-      product_name: bi.Product ? bi.Product.product_name : null,
+      product_name: bi.Product ? bi.Product.product_name : (bi.item_name || 'Manual Item'),
       quantity:     bi.quantity,
       unit_price:   bi.price,
       total:        parseFloat((bi.price * bi.quantity).toFixed(2)),

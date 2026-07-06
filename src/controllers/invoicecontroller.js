@@ -190,7 +190,7 @@ export const generateInvoice = async (req, res) => {
       const itemTotal = item.price * item.quantity;
       const vals = {
         sno:  String(idx + 1),
-        desc: item.Product?.product_name || "Item",
+        desc: item.Product?.product_name || item.item_name || "Manual Item",
         qty:  String(item.quantity),
         rate: rupee(item.price),
         gst:  gstPct > 0 ? `${gstPct}%` : "0%",
