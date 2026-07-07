@@ -5,7 +5,7 @@ import { cacheMiddleware } from "../middlewares/cache.js";
 import {
   previewBill, createBill, payDue,
   getRecentBills, getBillStats, getBillById,
-  getBillWithDetails, editBill,
+  getBillWithDetails, editBill, deleteBill,
 } from "../controllers/billcontroller.js";
 
 const router = express.Router();
@@ -17,6 +17,7 @@ router.post("/",             createBill);
 router.post("/preview",      previewBill);
 router.post("/:id/pay",      payDue);
 router.put("/:id",           editBill);                            // Edit bill
+router.delete("/:id",        deleteBill);                         // Delete bill
 router.get("/recent",        cacheMiddleware(30), getRecentBills);
 router.get("/stats",         cacheMiddleware(30), getBillStats);
 router.get("/:id/detail",    cacheMiddleware(10), getBillWithDetails); // View full details

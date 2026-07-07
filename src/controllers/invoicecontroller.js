@@ -19,6 +19,7 @@ export const generateInvoice = async (req, res) => {
     const items = await BillItem.findAll({
       where: { bill_id: bill.id },
       include: [{ model: Product, attributes: ["product_name", "selling_price"] }],
+      order: [['id', 'ASC']], // ✅ Ensure consistent order
     });
 
     const payments = await BillPayment.findAll({ where: { bill_id: bill.id } });
@@ -35,8 +36,14 @@ export const generateInvoice = async (req, res) => {
     // ── 4. Setup PDF ─────────────────────────────────────────────────────────
     const M   = 40;
     const doc = new PDFDocument({ margin: M, size: "A4", bufferPages: true });
+    
+    // ✅ Enhanced PDF headers to prevent security warnings
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename=invoice-${bill.bill_number}.pdf`);
+    res.setHeader("Content-Disposition", `inline; filename=invoice-BILL-${bill.id}.pdf`);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    
     doc.pipe(res);
 
     const PW   = doc.page.width;   // 595
@@ -88,11 +95,15 @@ export const generateInvoice = async (req, res) => {
          .text(`GSTIN: ${shop.gstin}`, M, shopInfoY, { width: CW * 0.65 });
     }
 
-    // "INVOICE" top-right
+    // "INVOICE" and Bill Number top-right
     const qLabelX = M + CW * 0.65 + 10;
     const qLabelW = CW * 0.35;
     doc.font("Helvetica-Bold").fontSize(26).fillColor(WHITE)
        .text("INVOICE", qLabelX, 14, { width: qLabelW, align: "right" });
+    
+    // Add Bill Number prominently below INVOICE
+    doc.font("Helvetica-Bold").fontSize(12).fillColor("#93c5fd")
+       .text(`BILL-${bill.id}`, qLabelX, 42, { width: qLabelW, align: "right" });
 
     Y = HDR_H;
 
@@ -100,7 +111,7 @@ export const generateInvoice = async (req, res) => {
     const TBAR_H = 22;
     doc.rect(0, Y, PW, TBAR_H).fill(LBLUE);
     doc.font("Helvetica-Bold").fontSize(10).fillColor(WHITE)
-       .text(`INVOICE  –  #${bill.bill_number}`, M, Y + 6, { width: CW, align: "center" });
+       .text(`INVOICE  –  BILL-${bill.id}`, M, Y + 6, { width: CW, align: "center" });
     Y += TBAR_H + 10;
 
     // ── 7. INFO BOXES ────────────────────────────────────────────────────────
@@ -119,7 +130,7 @@ export const generateInvoice = async (req, res) => {
       doc.font("Helvetica").fillColor(GREY).text(val);
       lY += 13;
     };
-    metaLine("Bill No:",    bill.bill_number);
+    metaLine("Bill No:",    `BILL-${bill.id}`);
     metaLine("Date:",       new Date(bill.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "numeric", year: "numeric" }));
     metaLine("Status:",     bill.status);
     metaLine("Payment:",    payments.map(p => p.payment_mode.toUpperCase()).join(", ") || "-");
@@ -143,8 +154,8 @@ export const generateInvoice = async (req, res) => {
 
     // ── 8. ITEMS TABLE ───────────────────────────────────────────────────────
     const colDefs = [
-      { key: "sno",  hdr: "#",           x: M,        w: 22,              align: "left"   },
-      { key: "desc", hdr: "DESCRIPTION", x: M + 22,   w: 210,             align: "left"   },
+      { key: "sno",  hdr: "#",           x: M,        w: 28,              align: "center" }, // ✅ Increased width and center align
+      { key: "desc", hdr: "DESCRIPTION", x: M + 28,   w: 204,             align: "left"   }, // ✅ Adjusted for wider sno column
       { key: "qty",  hdr: "QTY",         x: M + 232,  w: 55,              align: "center" },
       { key: "rate", hdr: "RATE",        x: M + 287,  w: 75,              align: "right"  },
       { key: "gst",  hdr: "GST%",        x: M + 362,  w: 48,              align: "center" },
@@ -172,6 +183,9 @@ export const generateInvoice = async (req, res) => {
     let tableTop = Y;
     Y = drawColHeader(Y); // draw once here only
 
+    // ✅ Create a separate serial counter to ensure proper numbering
+    let serialCounter = 1;
+
     items.forEach((item, idx) => {
       if (Y + ROW_H > PAGE_BOTTOM) {
         // Close border on current page
@@ -189,7 +203,7 @@ export const generateInvoice = async (req, res) => {
 
       const itemTotal = item.price * item.quantity;
       const vals = {
-        sno:  String(idx + 1),
+        sno:  serialCounter.toString(), // ✅ Use dedicated serial counter
         desc: item.Product?.product_name || item.item_name || "Manual Item",
         qty:  String(item.quantity),
         rate: rupee(item.price),
@@ -198,10 +212,17 @@ export const generateInvoice = async (req, res) => {
       };
 
       colDefs.forEach(col => {
-        doc.font(col.key === "desc" ? "Helvetica-Bold" : "Helvetica")
-           .fontSize(8.5).fillColor(DARK)
+        // ✅ Increase font size for serial numbers and make them bold
+        const isSerial = col.key === "sno";
+        const isDesc = col.key === "desc";
+        
+        doc.font(isSerial || isDesc ? "Helvetica-Bold" : "Helvetica")
+           .fontSize(isSerial ? 10 : 8.5) // ✅ Larger font for serial numbers
+           .fillColor(isSerial ? BLUE : DARK) // ✅ Blue color for serial numbers
            .text(vals[col.key] || "", col.x + 4, Y + 6, { width: col.w - 8, align: col.align });
       });
+      
+      serialCounter++; // ✅ Increment counter
       Y += ROW_H;
     });
 

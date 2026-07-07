@@ -73,9 +73,17 @@ export const previewBill = async (req, res) => {
       if (!product) {
         return res.status(404).json({ message: `Product not found (ID: ${item.product_id})` });
       }
+      
+      // ✅ Allow negative stock for preview - skip stock check but warn
+      // const allowNegativeStock = process.env.ALLOW_NEGATIVE_STOCK === 'true';
+      // if (!allowNegativeStock && product.stock_quantity < item.quantity) {
+      //   return res.status(400).json({ message: `Insufficient stock for ${product.product_name}` });
+      // }
+      
       if (product.stock_quantity < item.quantity) {
-        return res.status(400).json({ message: `Insufficient stock for ${product.product_name}` });
+        console.warn(`⚠️ Negative stock warning: ${product.product_name} - Available: ${product.stock_quantity}, Required: ${item.quantity}`);
       }
+      
       const itemTotal = product.selling_price * item.quantity;
       subtotal += itemTotal;
       billItems.push({
@@ -198,9 +206,19 @@ export const createBill = async (req, res) => {
 
       // ── Product-linked item ──────────────────────────────────────────
       const product = productMap.get(item.product_id);
-      if (!product || product.stock_quantity < item.quantity) {
-        throw new Error(`Insufficient stock for product ID ${item.product_id}`);
+      if (!product) {
+        throw new Error(`Product not found: ${item.product_id}`);
       }
+      
+      // ✅ Allow negative stock - skip stock validation for bill creation
+      // if (product.stock_quantity < item.quantity) {
+      //   throw new Error(`Insufficient stock for product ID ${item.product_id}`);
+      // }
+      
+      if (product.stock_quantity < item.quantity) {
+        console.warn(`⚠️ Negative stock warning: ${product.product_name} - Available: ${product.stock_quantity}, Required: ${item.quantity}`);
+      }
+      
       const itemTotal = product.selling_price * item.quantity;
       subtotal += itemTotal;
       billItemsToCreate.push({ product_id: product.id, quantity: item.quantity, price: product.selling_price, item_name: null });
@@ -659,10 +677,13 @@ export const editBill = async (req, res) => {
       return res.status(400).json({ message: "Cannot edit a cancelled bill" });
     }
 
-    // 2. Rollback old stock
+    // 2. Rollback old stock (but track quantities for new validation)
     const oldItems = await BillItem.findAll({ where: { bill_id: bill.id }, transaction });
+    const oldStockMap = new Map(); // Track old quantities to add back
+    
     for (const oldItem of oldItems) {
       if (oldItem.product_id) {
+        oldStockMap.set(oldItem.product_id, oldItem.quantity);
         await Product.update(
           { stock_quantity: sequelize.literal(`stock_quantity + ${oldItem.quantity}`) },
           { where: { id: oldItem.product_id, shop_id: shopId }, transaction }
@@ -673,7 +694,7 @@ export const editBill = async (req, res) => {
     // 3. Delete old items
     await BillItem.destroy({ where: { bill_id: bill.id }, transaction });
 
-    // 4. Validate new items
+    // 4. Validate new items (considering restored stock)
     if (!items || items.length === 0) {
       await transaction.rollback();
       return res.status(400).json({ message: "At least one item is required" });
@@ -699,32 +720,76 @@ export const editBill = async (req, res) => {
       let price      = parseFloat(item.price);
       let itemName   = item.item_name || item.name || "";
 
+      // ✅ Manual item - skip stock check
+      if (!item.product_id) {
+        if (!itemName) { 
+          await transaction.rollback(); 
+          return res.status(400).json({ message: "item_name required for manual items" }); 
+        }
+        if (isNaN(price) || price < 0) { 
+          await transaction.rollback(); 
+          return res.status(400).json({ message: `Invalid price for ${itemName}` }); 
+        }
+        
+        subtotal += parseFloat((price * quantity).toFixed(2));
+        newBillItems.push({ 
+          bill_id: bill.id, 
+          product_id: null, 
+          item_name: itemName, 
+          quantity, 
+          price 
+        });
+        continue; // Skip to next item
+      }
+
+      // ✅ Product item - check stock (current stock already includes rolled back quantity)
       if (item.product_id) {
         const product = productMap.get(item.product_id);
         if (!product) {
           await transaction.rollback();
           return res.status(404).json({ message: `Product not found (ID: ${item.product_id})` });
         }
-        if (parseFloat(product.stock_quantity) < quantity) {
-          await transaction.rollback();
-          return res.status(400).json({ message: `Insufficient stock for: ${product.product_name}` });
+        
+        // Current available stock (after rollback)
+        const currentStock = parseFloat(product.stock_quantity);
+        
+        console.log(`Stock check for product ${product.product_name} (ID: ${item.product_id}):`, {
+          currentStock,
+          requestedQty: quantity,
+          available: currentStock >= quantity
+        });
+        
+        // ✅ Allow negative stock for bill edit (stock will be managed separately)
+        // if (currentStock < quantity) {
+        //   await transaction.rollback();
+        //   return res.status(400).json({ 
+        //     message: `Insufficient stock for: ${product.product_name}. Available: ${currentStock}, Required: ${quantity}`,
+        //     error: 'INSUFFICIENT_STOCK',
+        //     productId: item.product_id,
+        //     productName: product.product_name,
+        //     availableStock: currentStock,
+        //     requestedQuantity: quantity
+        //   });
+        // }
+        
+        // ✅ Show warning but allow the transaction to continue
+        if (currentStock < quantity) {
+          console.warn(`⚠️ Negative stock warning: ${product.product_name} - Available: ${currentStock}, Required: ${quantity}`);
         }
+        
         if (isNaN(price)) price = product.selling_price;
         itemName = itemName || product.product_name;
         stockUpdates.push({ id: product.id, qty: quantity });
+        
+        subtotal += parseFloat((price * quantity).toFixed(2));
+        newBillItems.push({ 
+          bill_id: bill.id, 
+          product_id: item.product_id, 
+          item_name: null, // Product items don't need item_name
+          quantity, 
+          price 
+        });
       }
-
-      if (!itemName)                       { await transaction.rollback(); return res.status(400).json({ message: "item_name required" }); }
-      if (isNaN(price) || price < 0)       { await transaction.rollback(); return res.status(400).json({ message: `Invalid price for ${itemName}` }); }
-
-      subtotal += parseFloat((price * quantity).toFixed(2));
-      newBillItems.push({ 
-        bill_id: bill.id, 
-        product_id: item.product_id || null, 
-        item_name: !item.product_id ? itemName : null, // ✅ Store item_name for manual items
-        quantity, 
-        price 
-      });
     }
 
     // 5. Deduct new stock
@@ -738,13 +803,14 @@ export const editBill = async (req, res) => {
     // 6. Bulk create new items
     await BillItem.bulkCreate(newBillItems, { transaction });
 
-    // 7. Recalculate totals first
+    // 7. Recalculate totals first (with proper rounding)
     const gstPct  = parseFloat(gst_percentage) || 0;
     let gstAmount = 0;
-    let totalAmount = subtotal;
+    let totalAmount = Math.round(subtotal * 100) / 100; // Round to 2 decimals
+    
     if (gstPct > 0) {
-      gstAmount   = parseFloat(((subtotal * gstPct) / 100).toFixed(2));
-      totalAmount = parseFloat((subtotal + gstAmount).toFixed(2));
+      gstAmount   = Math.round((subtotal * gstPct) / 100 * 100) / 100;
+      totalAmount = Math.round((subtotal + gstAmount) * 100) / 100;
     }
 
     const discVal      = parseFloat(discount_value) || 0;
@@ -752,14 +818,14 @@ export const editBill = async (req, res) => {
     let discountPct    = null;
     if (discount_type && discVal > 0) {
       if (discount_type === "percentage") {
-        discountAmount = parseFloat(((totalAmount * discVal) / 100).toFixed(2));
+        discountAmount = Math.round((totalAmount * discVal) / 100 * 100) / 100;
         discountPct    = discVal;
       } else {
-        discountAmount = parseFloat(discVal.toFixed(2));
-        discountPct    = parseFloat(((discountAmount / totalAmount) * 100).toFixed(2));
+        discountAmount = Math.round(discVal * 100) / 100;
+        discountPct    = Math.round((discountAmount / totalAmount) * 100 * 100) / 100;
       }
       if (discountAmount > totalAmount) discountAmount = totalAmount;
-      totalAmount = parseFloat((totalAmount - discountAmount).toFixed(2));
+      totalAmount = Math.round((totalAmount - discountAmount) * 100) / 100;
     }
 
     // 8. Update payment records to match new total
@@ -807,5 +873,62 @@ export const editBill = async (req, res) => {
       error: error.message,
       details: error.name === 'SequelizeValidationError' ? error.errors : undefined
     });
+  }
+};
+
+/**
+ * ======================================
+ * 🗑️ DELETE BILL
+ * ======================================
+ */
+export const deleteBill = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { id } = req.params;
+    const shopId = req.user.shop_id;
+
+    // Find the bill
+    const bill = await Bill.findOne({
+      where: { id, shop_id: shopId },
+      include: [{ model: BillItem }],
+      transaction
+    });
+
+    if (!bill) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Bill not found" });
+    }
+
+    if (bill.status === "CANCELLED") {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Bill is already cancelled" });
+    }
+
+    // Restore stock for product items
+    for (const item of bill.BillItems) {
+      if (item.product_id) {
+        await Product.update(
+          { stock_quantity: sequelize.literal(`stock_quantity + ${item.quantity}`) },
+          { where: { id: item.product_id, shop_id: shopId }, transaction }
+        );
+      }
+    }
+
+    // Delete related records
+    await BillPayment.destroy({ where: { bill_id: bill.id }, transaction });
+    await BillItem.destroy({ where: { bill_id: bill.id }, transaction });
+    
+    // Delete the bill
+    await Bill.destroy({ where: { id: bill.id }, transaction });
+
+    await transaction.commit();
+    clearShopCache(shopId);
+
+    res.json({ message: "Bill deleted successfully" });
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Delete bill error:", error);
+    res.status(500).json({ error: error.message });
   }
 };
