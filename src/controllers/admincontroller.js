@@ -5,7 +5,7 @@ import User from "../models/usermodel.js";
 import Shop from "../models/shopmodel.js";
 import Product from "../models/productmodel.js";
 import Payment from "../models/paymentmodel.js";
-import { Op } from "sequelize";
+import { Op, QueryTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
 // Admin code from environment variable (never hardcode secrets in source)
@@ -686,6 +686,220 @@ export const extendTrial = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update trial period",
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
+    });
+  }
+};
+
+// Delete shop (Hard delete - WARNING: Deletes all associated data)
+export const deleteShop = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    
+    const shop = await Shop.findByPk(id);
+    
+    if (!shop) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Shop not found"
+      });
+    }
+    
+    const shopName = shop.shop_name;
+    
+    console.log(`Starting deletion of shop ${id}: ${shopName}`);
+    
+    // Delete all related records in correct order using transaction
+    
+    try {
+      // 1. Delete BillPayments first (depends on Bills)
+      const billPaymentsDeleted = await sequelize.query(
+        'DELETE FROM BillPayments WHERE bill_id IN (SELECT id FROM Bills WHERE shop_id = :shopId)',
+        {
+          replacements: { shopId: id },
+          type: QueryTypes.DELETE,
+          transaction
+        }
+      );
+      console.log(`Deleted BillPayments: ${billPaymentsDeleted}`);
+      
+      // 2. Delete BillItems (depends on Bills)
+      const billItemsDeleted = await sequelize.query(
+        'DELETE FROM BillItems WHERE bill_id IN (SELECT id FROM Bills WHERE shop_id = :shopId)',
+        {
+          replacements: { shopId: id },
+          type: QueryTypes.DELETE,
+          transaction
+        }
+      );
+      console.log(`Deleted BillItems: ${billItemsDeleted}`);
+      
+      // 3. Delete Bills
+      const billsDeleted = await sequelize.query(
+        'DELETE FROM Bills WHERE shop_id = :shopId',
+        {
+          replacements: { shopId: id },
+          type: QueryTypes.DELETE,
+          transaction
+        }
+      );
+      console.log(`Deleted Bills: ${billsDeleted}`);
+      
+      // 4. Delete QuotationItems (depends on Quotations)
+      try {
+        const quotationItemsDeleted = await sequelize.query(
+          'DELETE FROM QuotationItems WHERE quotation_id IN (SELECT id FROM Quotations WHERE shop_id = :shopId)',
+          {
+            replacements: { shopId: id },
+            type: QueryTypes.DELETE,
+            transaction
+          }
+        );
+        console.log(`Deleted QuotationItems: ${quotationItemsDeleted}`);
+      } catch (err) {
+        console.log('QuotationItems table might not exist, skipping...');
+      }
+      
+      // 5. Delete Quotations
+      try {
+        const quotationsDeleted = await sequelize.query(
+          'DELETE FROM Quotations WHERE shop_id = :shopId',
+          {
+            replacements: { shopId: id },
+            type: QueryTypes.DELETE,
+            transaction
+          }
+        );
+        console.log(`Deleted Quotations: ${quotationsDeleted}`);
+      } catch (err) {
+        console.log('Quotations table might not exist, skipping...');
+      }
+      
+      // 6. Delete CustomerLedgers (depends on Customers)
+      try {
+        const customerLedgersDeleted = await sequelize.query(
+          'DELETE FROM CustomerLedgers WHERE customer_id IN (SELECT id FROM Customers WHERE shop_id = :shopId)',
+          {
+            replacements: { shopId: id },
+            type: QueryTypes.DELETE,
+            transaction
+          }
+        );
+        console.log(`Deleted CustomerLedgers: ${customerLedgersDeleted}`);
+      } catch (err) {
+        console.log('CustomerLedgers table might not exist, skipping...');
+      }
+      
+      // 7. Delete Customers
+      const customersDeleted = await sequelize.query(
+        'DELETE FROM Customers WHERE shop_id = :shopId',
+        {
+          replacements: { shopId: id },
+          type: QueryTypes.DELETE,
+          transaction
+        }
+      );
+      console.log(`Deleted Customers: ${customersDeleted}`);
+      
+      // 8. Delete Products
+      const productsDeleted = await sequelize.query(
+        'DELETE FROM Products WHERE shop_id = :shopId',
+        {
+          replacements: { shopId: id },
+          type: QueryTypes.DELETE,
+          transaction
+        }
+      );
+      console.log(`Deleted Products: ${productsDeleted}`);
+      
+      // 9. Delete Payments
+      const paymentsDeleted = await sequelize.query(
+        'DELETE FROM Payments WHERE shopId = :shopId',
+        {
+          replacements: { shopId: id },
+          type: QueryTypes.DELETE,
+          transaction
+        }
+      );
+      console.log(`Deleted Payments: ${paymentsDeleted}`);
+      
+      // 10. Delete Subscription_History (both table names)
+      try {
+        await sequelize.query(
+          'DELETE FROM Subscription_History WHERE shop_id = :shopId',
+          {
+            replacements: { shopId: id },
+            type: QueryTypes.DELETE,
+            transaction
+          }
+        );
+        console.log(`Deleted Subscription_History`);
+      } catch (err) {
+        console.log('Subscription_History table might not exist, skipping...');
+      }
+      
+      try {
+        await sequelize.query(
+          'DELETE FROM Subscription_Histories WHERE shop_id = :shopId',
+          {
+            replacements: { shopId: id },
+            type: QueryTypes.DELETE,
+            transaction
+          }
+        );
+        console.log(`Deleted Subscription_Histories`);
+      } catch (err) {
+        console.log('Subscription_Histories table might not exist, skipping...');
+      }
+      
+      // 11. Delete Users (Staff and Owner)
+      const usersDeleted = await sequelize.query(
+        'DELETE FROM Users WHERE shop_id = :shopId',
+        {
+          replacements: { shopId: id },
+          type: QueryTypes.DELETE,
+          transaction
+        }
+      );
+      console.log(`Deleted Users: ${usersDeleted}`);
+      
+      // 12. Finally delete the Shop
+      await sequelize.query(
+        'DELETE FROM Shops WHERE id = :shopId',
+        {
+          replacements: { shopId: id },
+          type: QueryTypes.DELETE,
+          transaction
+        }
+      );
+      console.log(`Deleted Shop: ${shopName}`);
+      
+      // Commit transaction
+      await transaction.commit();
+      console.log(`✅ Successfully deleted shop ${id}: ${shopName}`);
+      
+      res.json({
+        success: true,
+        message: `Shop "${shopName}" and all associated data deleted successfully`
+      });
+      
+    } catch (deleteError) {
+      console.error('Error during deletion:', deleteError);
+      await transaction.rollback();
+      throw deleteError;
+    }
+    
+  } catch (error) {
+    console.error("Delete shop error:", error);
+    if (transaction && !transaction.finished) {
+      await transaction.rollback();
+    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete shop",
       error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }

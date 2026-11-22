@@ -14,20 +14,8 @@ import BillCounter from '../models/billCounterModel.js';
  */
 export const getNextBillNumber = async (shopId, transaction) => {
   try {
-    // ✅ Use atomic increment with row locking to prevent race conditions
-    const [counter] = await sequelize.query(
-      `UPDATE BillCounters 
-       SET current_number = current_number + 1 
-       WHERE shop_id = ?`,
-      {
-        replacements: [shopId],
-        transaction,
-        type: sequelize.QueryTypes.UPDATE
-      }
-    );
-    
-    // Get the updated counter value
-    const billCounter = await BillCounter.findOne({
+    // ✅ First, get and lock the counter row
+    let billCounter = await BillCounter.findOne({
       where: { shop_id: shopId },
       transaction,
       lock: transaction.LOCK.UPDATE
@@ -35,18 +23,31 @@ export const getNextBillNumber = async (shopId, transaction) => {
     
     if (!billCounter) {
       // Create counter if doesn't exist (failsafe)
-      const newCounter = await BillCounter.create({
+      billCounter = await BillCounter.create({
         shop_id: shopId,
         current_number: 1,
         prefix: '',
         suffix: ''
       }, { transaction });
       
-      return formatBillNumber(1, newCounter.prefix, newCounter.suffix);
+      return formatBillNumber(1, billCounter.prefix, billCounter.suffix);
     }
     
+    // ✅ Increment the counter
+    const newNumber = billCounter.current_number + 1;
+    
+    await BillCounter.update(
+      { current_number: newNumber },
+      { 
+        where: { shop_id: shopId },
+        transaction
+      }
+    );
+    
+    console.log(`📊 Generated bill number for shop ${shopId}: ${formatBillNumber(newNumber, billCounter.prefix, billCounter.suffix)}`);
+    
     return formatBillNumber(
-      billCounter.current_number, 
+      newNumber, 
       billCounter.prefix, 
       billCounter.suffix
     );

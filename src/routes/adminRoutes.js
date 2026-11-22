@@ -11,6 +11,7 @@ import {
   softDeleteUser,
   getShops,
   suspendShop,
+  deleteShop,
   extendTrial,
   updateSubscription,
   getAnalytics,
@@ -60,6 +61,7 @@ router.get("/admin/shops/:id/products", adminAuthMiddleware, getShopProducts);
 router.put("/admin/shops/:id/suspend", adminAuthMiddleware, suspendShop);
 router.put("/admin/shops/:id/extend-trial", adminAuthMiddleware, extendTrial);
 router.put("/admin/shops/:id/subscription", adminAuthMiddleware, updateSubscription);
+router.delete("/admin/shops/:id", adminAuthMiddleware, deleteShop);
 
 // Analytics
 router.get("/admin/analytics", adminAuthMiddleware, getAnalytics);

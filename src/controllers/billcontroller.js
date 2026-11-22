@@ -308,7 +308,7 @@ export const createBill = async (req, res) => {
       if (customer) {
         await CustomerLedger.create(
           {
-            shop_id,
+            shop_id: shopId,
             customer_id,
             type:           "debit",
             amount:         dueAmount,
