@@ -47,7 +47,7 @@ import sequelize from './src/config/database.js';
     } else {
       console.log('Creating new admin...');
       await sequelize.query(
-        `INSERT INTO Admins (name, email, password, role, is_active, created_at, updated_at)
+        `INSERT INTO Admins (name, email, password, role, is_active, createdAt, updatedAt)
          VALUES (?, ?, ?, ?, 1, NOW(), NOW())`,
         {
           replacements: [
