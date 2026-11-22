@@ -1,4 +1,4 @@
-import Shop from '../models/shopmodel.js';
+﻿import Shop from '../models/shopmodel.js';
 import Payment from '../models/paymentmodel.js';
 import SubscriptionHistory from '../models/subscriptionHistoryModel.js';
 import AdminSettings from '../models/adminSettingsModel.js';
@@ -55,7 +55,7 @@ export const getPlans = async (req, res) => {
       plans: PLANS
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -121,7 +121,7 @@ export const getCurrentSubscription = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -129,7 +129,6 @@ export const getCurrentSubscription = async (req, res) => {
 export const initiatePayment = async (req, res) => {
   try {
     const { plan_type, duration } = req.body;
-    console.log('Initiate payment request:', { plan_type, duration, user: req.user });
     
     const shop = await Shop.findByPk(req.user.shop_id);
 
@@ -160,8 +159,6 @@ export const initiatePayment = async (req, res) => {
       return res.status(400).json({ error: 'Invalid plan type. Use: starter, business, premium, founder' });
     }
 
-    console.log('Creating payment record:', { shop_id: shop.id, payment_type: plan_type, plan_name: planName, amount });
-
     // Create payment record
     const payment = await Payment.create({
       shopId: shop.id,
@@ -171,8 +168,6 @@ export const initiatePayment = async (req, res) => {
       verificationStatus: 'pending'
     });
 
-    console.log('Payment record created:', payment.id);
-
     // Get UPI settings
     const upiIdSetting = await AdminSettings.findOne({
       where: { setting_key: 'subscription_upi_id' }
@@ -180,11 +175,6 @@ export const initiatePayment = async (req, res) => {
 
     const qrCodeSetting = await AdminSettings.findOne({
       where: { setting_key: 'subscription_qr_code' }
-    });
-
-    console.log('UPI settings:', { 
-      upi_id: upiIdSetting?.setting_value, 
-      has_qr: !!qrCodeSetting?.setting_value 
     });
 
     res.json({
@@ -197,7 +187,7 @@ export const initiatePayment = async (req, res) => {
     });
   } catch (error) {
     console.error('Error in initiatePayment:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -230,7 +220,7 @@ export const submitPaymentProof = async (req, res) => {
       message: 'Payment submitted for verification'
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -294,6 +284,6 @@ export const checkFeatureAccess = async (req, res) => {
       reason: reason
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };

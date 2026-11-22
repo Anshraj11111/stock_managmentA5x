@@ -13,14 +13,15 @@ const router = express.Router();
 router.use(authMiddleware);
 router.use(shopMiddleware);
 
+// ✅ Enhanced route optimizations with better caching
 router.post("/",             createBill);
 router.post("/preview",      previewBill);
 router.post("/:id/pay",      payDue);
-router.put("/:id",           editBill);                            // Edit bill
-router.delete("/:id",        deleteBill);                         // Delete bill
-router.get("/recent",        cacheMiddleware(30), getRecentBills);
-router.get("/stats",         cacheMiddleware(30), getBillStats);
-router.get("/:id/detail",    cacheMiddleware(10), getBillWithDetails); // View full details
-router.get("/:id",           cacheMiddleware(30), getBillById);
+router.put("/:id",           editBill);                            
+router.delete("/:id",        deleteBill);                         
+router.get("/recent",        cacheMiddleware(60), getRecentBills);  // ✅ 1 minute cache
+router.get("/stats",         cacheMiddleware(120), getBillStats);   // ✅ 2 minute cache  
+router.get("/:id/detail",    cacheMiddleware(30), getBillWithDetails); 
+router.get("/:id",           cacheMiddleware(60), getBillById);     // ✅ 1 minute cache
 
 export default router;

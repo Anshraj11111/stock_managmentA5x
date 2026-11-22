@@ -39,7 +39,7 @@ export const generateInvoice = async (req, res) => {
     
     // ✅ Enhanced PDF headers to prevent security warnings
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename=invoice-BILL-${bill.id}.pdf`);
+    res.setHeader("Content-Disposition", `inline; filename=invoice-${bill.bill_number}.pdf`);
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
@@ -103,7 +103,7 @@ export const generateInvoice = async (req, res) => {
     
     // Add Bill Number prominently below INVOICE
     doc.font("Helvetica-Bold").fontSize(12).fillColor("#93c5fd")
-       .text(`BILL-${bill.id}`, qLabelX, 42, { width: qLabelW, align: "right" });
+       .text(`#${bill.bill_number}`, qLabelX, 42, { width: qLabelW, align: "right" });
 
     Y = HDR_H;
 
@@ -111,7 +111,7 @@ export const generateInvoice = async (req, res) => {
     const TBAR_H = 22;
     doc.rect(0, Y, PW, TBAR_H).fill(LBLUE);
     doc.font("Helvetica-Bold").fontSize(10).fillColor(WHITE)
-       .text(`INVOICE  –  BILL-${bill.id}`, M, Y + 6, { width: CW, align: "center" });
+       .text(`INVOICE  –  #${bill.bill_number}`, M, Y + 6, { width: CW, align: "center" });
     Y += TBAR_H + 10;
 
     // ── 7. INFO BOXES ────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ export const generateInvoice = async (req, res) => {
       doc.font("Helvetica").fillColor(GREY).text(val);
       lY += 13;
     };
-    metaLine("Bill No:",    `BILL-${bill.id}`);
+    metaLine("Bill No:",    `#${bill.bill_number}`);
     metaLine("Date:",       new Date(bill.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "numeric", year: "numeric" }));
     metaLine("Status:",     bill.status);
     metaLine("Payment:",    payments.map(p => p.payment_mode.toUpperCase()).join(", ") || "-");
@@ -412,6 +412,6 @@ export const generateInvoice = async (req, res) => {
     doc.end();
   } catch (error) {
     console.error("Invoice Error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };

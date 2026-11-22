@@ -109,7 +109,7 @@ export const dailySalesReport = async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Daily sales report error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -167,7 +167,7 @@ export const monthlySalesReport = async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -222,6 +222,6 @@ export const dateRangeSalesReport = async (req, res) => {
 
     res.json(formattedStats);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };

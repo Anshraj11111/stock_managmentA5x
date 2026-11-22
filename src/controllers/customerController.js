@@ -19,7 +19,7 @@ export const getCustomers = async (req, res) => {
     res.json(customers);
   } catch (error) {
     console.error("GET CUSTOMERS ERROR:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -49,7 +49,7 @@ export const searchCustomerByPhone = async (req, res) => {
     res.json({ found: true, customer });
   } catch (error) {
     console.error("SEARCH CUSTOMER ERROR:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -86,7 +86,7 @@ export const getCustomerById = async (req, res) => {
     });
   } catch (error) {
     console.error("GET CUSTOMER BY ID ERROR:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -138,7 +138,7 @@ export const createOrUpdateCustomer = async (req, res) => {
     });
   } catch (error) {
     console.error("CREATE/UPDATE CUSTOMER ERROR:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -204,7 +204,7 @@ export const recordPayment = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("RECORD PAYMENT ERROR:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -237,7 +237,7 @@ export const deleteCustomer = async (req, res) => {
     res.json({ message: "Customer deleted successfully" });
   } catch (error) {
     console.error("DELETE CUSTOMER ERROR:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -302,6 +302,6 @@ export const deleteLedgerEntry = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("DELETE LEDGER ENTRY ERROR:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };

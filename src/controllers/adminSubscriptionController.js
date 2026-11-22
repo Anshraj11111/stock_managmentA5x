@@ -1,4 +1,4 @@
-import Shop from '../models/shopmodel.js';
+﻿import Shop from '../models/shopmodel.js';
 import Payment from '../models/paymentmodel.js';
 import SubscriptionHistory from '../models/subscriptionHistoryModel.js';
 import AdminSettings from '../models/adminSettingsModel.js';
@@ -56,7 +56,7 @@ export const getAllSubscriptions = async (req, res) => {
       subscriptions
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -90,7 +90,7 @@ export const getPendingPayments = async (req, res) => {
       payments: formattedPayments
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -165,7 +165,7 @@ export const verifyPayment = async (req, res) => {
       subscription_activated: subscriptionActivated
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -190,7 +190,7 @@ export const suspendShop = async (req, res) => {
       message: 'Shop suspended successfully'
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -215,7 +215,7 @@ export const activateShop = async (req, res) => {
       message: 'Shop activated successfully'
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -251,7 +251,7 @@ export const processRefund = async (req, res) => {
       message: 'Refund processed successfully'
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -294,7 +294,7 @@ export const updateAdminSettings = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating admin settings:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -317,6 +317,6 @@ export const getAdminSettings = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };

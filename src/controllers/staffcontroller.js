@@ -44,7 +44,7 @@ export const addStaff = async (req, res) => {
       staff_id: staff.id,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -66,7 +66,7 @@ export const getAllStaff = async (req, res) => {
 
     res.json(staffList);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -103,7 +103,7 @@ export const updateStaff = async (req, res) => {
 
     res.json({ message: "Staff updated successfully" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -128,7 +128,7 @@ export const deactivateStaff = async (req, res) => {
 
     res.json({ message: "Staff deactivated successfully" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -152,7 +152,7 @@ export const activateStaff = async (req, res) => {
 
     res.json({ message: "Staff activated successfully" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -180,6 +180,6 @@ export const deleteStaff = async (req, res) => {
 
     res.json({ message: "Staff deleted successfully" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };

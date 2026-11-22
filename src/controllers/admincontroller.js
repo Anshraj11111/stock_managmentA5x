@@ -8,8 +8,8 @@ import Payment from "../models/paymentmodel.js";
 import { Op } from "sequelize";
 import sequelize from "../config/database.js";
 
-// Fixed admin code
-const ADMIN_CODE = "H5";
+// Admin code from environment variable (never hardcode secrets in source)
+const ADMIN_CODE = process.env.ADMIN_CODE;
 
 // Generate JWT token for admin
 const generateAdminToken = (admin) => {
@@ -98,7 +98,7 @@ export const adminSignup = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to create admin",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -175,7 +175,7 @@ export const adminLogin = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Login failed",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -293,7 +293,7 @@ export const getDashboardStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch dashboard statistics",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -368,7 +368,7 @@ export const getUsers = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch users",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -410,7 +410,7 @@ export const getUserById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch user",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -440,7 +440,7 @@ export const activateUser = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to activate user",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -470,7 +470,7 @@ export const deactivateUser = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to deactivate user",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -501,7 +501,7 @@ export const softDeleteUser = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to delete user",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -516,25 +516,18 @@ export const softDeleteUser = async (req, res) => {
 export const getShops = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = '', status = '' } = req.query;
-    
-    const offset = (page - 1) * limit;
-    
-    // Build where clause
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // ✅ Use Sequelize ORM — never interpolate user input into raw SQL
     const where = {};
-    
     if (search) {
       where.shop_name = { [Op.like]: `%${search}%` };
     }
-    
-    if (status === 'active') {
-      where.subscription_active = true;
-    } else if (status === 'inactive') {
-      where.subscription_active = false;
-    } else if (status === 'trial') {
-      where.plan_type = 'trial';
-    }
-    
-    // Optimized query with raw SQL for better performance
+    if (status === 'active')   where.subscription_active = true;
+    if (status === 'inactive') where.subscription_active = false;
+    if (status === 'trial')    where.plan_type = 'trial';
+
+    // ✅ Use parameterized replacements for the join query
     const shops = await sequelize.query(`
       SELECT 
         s.id,
@@ -544,81 +537,76 @@ export const getShops = async (req, res) => {
         s.subscription_active,
         s.isSuspended,
         s.createdAt,
-        owner.name as owner_name,
-        owner.email as owner_email,
-        COALESCE(product_counts.total, 0) as total_products,
-        COALESCE(staff_counts.total, 0) as total_staff
+        owner.name  AS owner_name,
+        owner.email AS owner_email,
+        COALESCE(product_counts.total, 0) AS total_products,
+        COALESCE(staff_counts.total,   0) AS total_staff
       FROM Shops s
       LEFT JOIN (
-        SELECT shop_id, name, email 
-        FROM Users 
-        WHERE role = 'owner'
+        SELECT shop_id, name, email FROM Users WHERE role = 'owner'
       ) owner ON s.id = owner.shop_id
       LEFT JOIN (
-        SELECT shop_id, COUNT(*) as total 
-        FROM Products 
-        GROUP BY shop_id
+        SELECT shop_id, COUNT(*) AS total FROM Products GROUP BY shop_id
       ) product_counts ON s.id = product_counts.shop_id
       LEFT JOIN (
-        SELECT shop_id, COUNT(*) as total 
-        FROM Users 
-        WHERE role = 'staff' 
-        GROUP BY shop_id
+        SELECT shop_id, COUNT(*) AS total FROM Users WHERE role = 'staff' GROUP BY shop_id
       ) staff_counts ON s.id = staff_counts.shop_id
       WHERE 1=1
-        ${search ? `AND s.shop_name LIKE '%${search}%'` : ''}
-        ${status === 'active' ? 'AND s.subscription_active = 1' : ''}
-        ${status === 'inactive' ? 'AND s.subscription_active = 0' : ''}
-        ${status === 'trial' ? "AND s.plan_type = 'trial'" : ''}
+        ${search   ? 'AND s.shop_name LIKE :search'             : ''}
+        ${status === 'active'   ? 'AND s.subscription_active = 1'     : ''}
+        ${status === 'inactive' ? 'AND s.subscription_active = 0'     : ''}
+        ${status === 'trial'    ? "AND s.plan_type = 'trial'"         : ''}
       ORDER BY s.createdAt DESC
-      LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
+      LIMIT :limit OFFSET :offset
     `, {
+      replacements: {
+        search: `%${search}%`,
+        limit:  parseInt(limit),
+        offset,
+      },
       type: sequelize.QueryTypes.SELECT
     });
-    
-    // Get total count
+
     const countResult = await sequelize.query(`
-      SELECT COUNT(*) as total
-      FROM Shops s
+      SELECT COUNT(*) AS total FROM Shops s
       WHERE 1=1
-        ${search ? `AND s.shop_name LIKE '%${search}%'` : ''}
-        ${status === 'active' ? 'AND s.subscription_active = 1' : ''}
+        ${search   ? 'AND s.shop_name LIKE :search'         : ''}
+        ${status === 'active'   ? 'AND s.subscription_active = 1' : ''}
         ${status === 'inactive' ? 'AND s.subscription_active = 0' : ''}
-        ${status === 'trial' ? "AND s.plan_type = 'trial'" : ''}
+        ${status === 'trial'    ? "AND s.plan_type = 'trial'"     : ''}
     `, {
+      replacements: { search: `%${search}%` },
       type: sequelize.QueryTypes.SELECT
     });
-    
+
     const total = countResult[0].total;
-    
-    // Format response
+
     const formattedShops = shops.map(shop => ({
-      id: shop.id,
-      shop_name: shop.shop_name,
-      owner_name: shop.owner_name || 'N/A',
-      owner_email: shop.owner_email || 'N/A',
-      plan_type: shop.plan_type || 'N/A',
-      trial_end_date: shop.trial_end_date,
+      id:                  shop.id,
+      shop_name:           shop.shop_name,
+      owner_name:          shop.owner_name  || 'N/A',
+      owner_email:         shop.owner_email || 'N/A',
+      plan_type:           shop.plan_type   || 'N/A',
+      trial_end_date:      shop.trial_end_date,
       subscription_active: shop.subscription_active,
-      isSuspended: shop.isSuspended || false,
-      total_products: parseInt(shop.total_products) || 0,
-      total_staff: parseInt(shop.total_staff) || 0,
-      createdAt: shop.createdAt
+      isSuspended:         shop.isSuspended || false,
+      total_products:      parseInt(shop.total_products) || 0,
+      total_staff:         parseInt(shop.total_staff)    || 0,
+      createdAt:           shop.createdAt,
     }));
-    
+
     res.json({
       success: true,
       shops: formattedShops,
-      total: total,
-      page: parseInt(page),
-      pages: Math.ceil(total / limit)
+      total,
+      page:  parseInt(page),
+      pages: Math.ceil(total / parseInt(limit)),
     });
   } catch (error) {
-    console.error("Get shops error:", error);
+    console.error("Get shops error:", error.message);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch shops",
-      error: error.message
+      message: process.env.NODE_ENV === 'production' ? 'Failed to fetch shops' : error.message,
     });
   }
 };
@@ -651,7 +639,7 @@ export const suspendShop = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to suspend shop",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -698,7 +686,7 @@ export const extendTrial = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update trial period",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -736,7 +724,7 @@ export const updateSubscription = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update subscription",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -815,13 +803,13 @@ export const getAnalytics = async (req, res) => {
     }
     
     if (type === 'revenue') {
-      // Revenue trends
+      // Revenue trends - Payment table uses created_at (underscored)
       const revenueTrends = await sequelize.query(`
         SELECT 
-          ${groupBy} as period,
+          ${groupBy.replace('createdAt', 'created_at')} as period,
           SUM(amount) as total
         FROM Payments
-        WHERE createdAt >= :startDate
+        WHERE created_at >= :startDate
         GROUP BY period
         ORDER BY period ASC
       `, {
@@ -895,11 +883,11 @@ export const getAnalytics = async (req, res) => {
         type: sequelize.QueryTypes.SELECT
       }),
       
-      // Revenue trends
+      // Revenue trends - Payment table uses created_at (underscored)
       sequelize.query(`
-        SELECT ${groupBy} as period, SUM(amount) as total
+        SELECT ${groupBy.replace('createdAt', 'created_at')} as period, SUM(amount) as total
         FROM Payments
-        WHERE createdAt >= :startDate
+        WHERE created_at >= :startDate
         GROUP BY period
         ORDER BY period ASC
       `, {
@@ -923,7 +911,7 @@ export const getAnalytics = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch analytics",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };
@@ -999,7 +987,7 @@ export const getShopProducts = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch shop products",
-      error: error.message
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 };

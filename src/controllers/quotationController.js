@@ -187,7 +187,7 @@ export const createQuotation = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("Create quotation error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -228,7 +228,7 @@ export const getQuotations = async (req, res) => {
       quotations: rows,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -261,7 +261,7 @@ export const getQuotationById = async (req, res) => {
 
     res.json(quotation);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -374,7 +374,7 @@ export const updateQuotation = async (req, res) => {
     res.json({ message: "Quotation updated successfully" });
   } catch (error) {
     await transaction.rollback();
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -413,7 +413,7 @@ export const deleteQuotation = async (req, res) => {
     res.json({ message: "Quotation deleted successfully" });
   } catch (error) {
     await transaction.rollback();
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -446,7 +446,7 @@ export const updateQuotationStatus = async (req, res) => {
 
     res.json({ message: `Quotation marked as ${status}`, quotation_id: quotation.id });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -599,7 +599,7 @@ export const convertToBill = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("Convert quotation error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -931,7 +931,7 @@ export const generateQuotationPDF = async (req, res) => {
     doc.end();
   } catch (error) {
     console.error("Quotation PDF error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -973,6 +973,6 @@ export const getQuotationStats = async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };

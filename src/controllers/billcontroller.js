@@ -6,6 +6,7 @@ import BillPayment from "../models/billPaymentModel.js";
 import Customer from "../models/customerModel.js";
 import CustomerLedger from "../models/customerLedgerModel.js";
 import { clearShopCache } from "../middlewares/cache.js";
+import { getNextBillNumber } from "../utils/billNumberGenerator.js";
 import { Op } from "sequelize";
 
 /**
@@ -126,7 +127,7 @@ export const previewBill = async (req, res) => {
       items:            billItems,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -247,22 +248,12 @@ export const createBill = async (req, res) => {
       totalAmount = parseFloat((totalBeforeDiscount - discountAmount).toFixed(2));
     }
 
-    // Sequential bill number
-    const lastBill = await Bill.findOne({
-      where: { shop_id: shopId },
-      order: [["id", "DESC"]],
-      attributes: ["bill_number"],
-      transaction,
-    });
-    let nextBillNumber = 1;
-    if (lastBill && lastBill.bill_number) {
-      const match = lastBill.bill_number.match(/\d+$/);
-      if (match) nextBillNumber = parseInt(match[0]) + 1;
-    }
+    // ✅ Generate sequential bill number using new system
+    const billNumber = await getNextBillNumber(shopId, transaction);
 
     const bill = await Bill.create(
       {
-        bill_number:         nextBillNumber.toString(),
+        bill_number:         billNumber, // ✅ Use sequential number
         subtotal_amount:     subtotal,
         gst_percentage:      gst_percentage || null,
         gst_amount:          gstAmount > 0 ? gstAmount : null,
@@ -351,13 +342,13 @@ export const createBill = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("Bill creation error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
 /**
  * ======================================
- * 3️⃣ CANCEL BILL (STOCK ROLLBACK)
+ * 3️⃣ CANCEL BILL (STOCK ROLLBACK + LEDGER REVERSAL)
  * ======================================
  */
 export const cancelBill = async (req, res) => {
@@ -369,31 +360,67 @@ export const cancelBill = async (req, res) => {
     const bill = await Bill.findOne({
       where: { id, shop_id: req.user.shop_id },
       transaction,
+      lock: transaction.LOCK.UPDATE,
     });
 
     if (!bill) {
+      await transaction.rollback();
       return res.status(404).json({ message: "Bill not found" });
     }
     if (bill.status === "CANCELLED") {
+      await transaction.rollback();
       return res.status(400).json({ message: "Bill already cancelled" });
     }
 
     const billItems = await BillItem.findAll({ where: { bill_id: bill.id }, transaction });
 
+    // Restore stock for all product items
     for (const item of billItems) {
-      const product = await Product.findByPk(item.product_id, { transaction, lock: transaction.LOCK.UPDATE });
-      if (product) {
-        await product.update({ stock_quantity: product.stock_quantity + item.quantity }, { transaction });
+      if (item.product_id) {
+        const product = await Product.findByPk(item.product_id, { transaction, lock: transaction.LOCK.UPDATE });
+        if (product) {
+          await product.update(
+            { stock_quantity: parseFloat(product.stock_quantity) + parseFloat(item.quantity) },
+            { transaction }
+          );
+        }
+      }
+    }
+
+    // ✅ Reverse customer ledger if this bill had a due amount
+    if (bill.customer_id && parseFloat(bill.due_amount) > 0) {
+      const customer = await Customer.findOne({
+        where: { id: bill.customer_id, shop_id: req.user.shop_id },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (customer) {
+        // Remove the due from customer's total_due
+        const newDue = Math.max(0, parseFloat(customer.total_due) - parseFloat(bill.due_amount));
+        await customer.update({ total_due: newDue }, { transaction });
+
+        // Add a credit ledger entry to record the reversal
+        await CustomerLedger.create({
+          shop_id:        req.user.shop_id,
+          customer_id:    bill.customer_id,
+          type:           'credit',
+          amount:         bill.due_amount,
+          reference_type: 'cancellation',
+          reference_id:   bill.id,
+          description:    `Bill ${bill.bill_number} cancelled — due reversed`,
+        }, { transaction });
       }
     }
 
     await bill.update({ status: "CANCELLED" }, { transaction });
     await transaction.commit();
 
+    clearShopCache(req.user.shop_id);
     res.json({ message: "Bill cancelled successfully" });
   } catch (error) {
     await transaction.rollback();
-    res.status(500).json({ error: error.message });
+    console.error("cancelBill error:", error.message);
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -418,7 +445,7 @@ export const getBillById = async (req, res) => {
 
     res.json(bill);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -445,7 +472,7 @@ export const dailySalesReport = async (req, res) => {
 
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -455,40 +482,90 @@ export const dailySalesReport = async (req, res) => {
  * ======================================
  */
 export const payDue = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
     const { amount, mode, reference_id } = req.body;
 
-    const bill = await Bill.findOne({ where: { id, shop_id: req.user.shop_id } });
-    if (!bill || bill.status === "CANCELLED") {
-      return res.status(400).json({ message: "Invalid bill" });
+    // ✅ Validate amount
+    const parsedAmount = parseFloat(amount);
+    if (!parsedAmount || parsedAmount <= 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Valid payment amount required" });
+    }
+
+    const validModes = ['cash', 'upi', 'card', 'bank_transfer', 'cheque', 'credit'];
+    if (!mode || !validModes.includes(mode)) {
+      await transaction.rollback();
+      return res.status(400).json({ message: `Invalid payment mode. Use: ${validModes.join(', ')}` });
+    }
+
+    // ✅ Lock bill row to prevent concurrent updates
+    const bill = await Bill.findOne({
+      where: { id, shop_id: req.user.shop_id },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!bill) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Bill not found" });
+    }
+    if (bill.status === "CANCELLED") {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Cannot record payment on a cancelled bill" });
+    }
+    if (bill.due_amount <= 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "This bill has no outstanding due amount" });
+    }
+    if (parsedAmount > parseFloat(bill.due_amount)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: `Payment (₹${parsedAmount}) exceeds due amount (₹${bill.due_amount})`,
+      });
     }
 
     await BillPayment.create({
       bill_id:      bill.id,
-      amount,
+      amount:       parsedAmount,
       payment_mode: mode,
       reference_id: reference_id || null,
+    }, { transaction });
+
+    const newPaid = parseFloat((parseFloat(bill.paid_amount) + parsedAmount).toFixed(2));
+    const newDue  = parseFloat((parseFloat(bill.due_amount)  - parsedAmount).toFixed(2));
+
+    await bill.update({
+      paid_amount: newPaid,
+      due_amount:  Math.max(0, newDue),
+      status:      newDue <= 0 ? "PAID" : "PARTIAL",
+    }, { transaction });
+
+    await transaction.commit();
+
+    res.json({
+      message:     "Payment recorded successfully",
+      bill_id:     bill.id,
+      paid_amount: newPaid,
+      due_amount:  Math.max(0, newDue),
+      status:      newDue <= 0 ? "PAID" : "PARTIAL",
     });
-
-    bill.paid_amount += amount;
-    bill.due_amount  -= amount;
-    bill.status       = bill.due_amount <= 0 ? "PAID" : "PARTIAL";
-    await bill.save();
-
-    res.json({ message: "Due payment recorded", bill });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    await transaction.rollback();
+    console.error("payDue error:", e.message);
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message });
   }
 };
 
 /**
  * ======================================
- * 7️⃣ GET RECENT BILLS
+ * 7️⃣ GET RECENT BILLS (OPTIMIZED)
  * ======================================
  */
 export const getRecentBills = async (req, res) => {
   try {
+    // ✅ Optimized query with specific attributes only
     const bills = await Bill.findAll({
       where: { shop_id: req.user.shop_id },
       order: [["createdAt", "DESC"]],
@@ -497,10 +574,13 @@ export const getRecentBills = async (req, res) => {
         "id", "bill_number", "total_amount", "paid_amount",
         "due_amount", "status", "customer_name", "customer_phone", "createdAt",
       ],
+      // ✅ No includes to avoid JOIN overhead for this simple query
+      raw: true, // ✅ Returns plain objects, faster than Sequelize instances
     });
 
     res.json(bills);
   } catch (err) {
+    console.error("Recent bills error:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -535,32 +615,32 @@ export const getBillStats = async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
 /**
  * ======================================
- * 9️⃣ GET BILL WITH FULL DETAILS (VIEW)
+ * 9️⃣ GET BILL WITH FULL DETAILS (OPTIMIZED)
  * ======================================
- * Returns Bill + BillItems with Product names + BillPayments + Customer info.
- * Intended for the "View Bill" feature on the frontend.
  */
 export const getBillWithDetails = async (req, res) => {
   try {
     const { id } = req.params;
-    const shopId  = req.user.shop_id;
+    const shopId = req.user.shop_id;
 
-    // Fetch bill with all related data in one query
+    // ✅ Single optimized query with all needed data
     const bill = await Bill.findOne({
       where: { id, shop_id: shopId },
       include: [
         {
           model: BillItem,
+          attributes: ['id', 'product_id', 'quantity', 'price', 'item_name'], // Only needed fields
           include: [
             {
               model: Product,
-              attributes: ["id", "product_name", "selling_price"],
+              attributes: ["id", "product_name"], // Only needed fields
+              required: false, // LEFT JOIN for manual items
             },
           ],
         },
@@ -575,70 +655,65 @@ export const getBillWithDetails = async (req, res) => {
       return res.status(404).json({ message: "Bill not found" });
     }
 
-    // Fetch linked customer if customer_id present
+    // ✅ Optimized customer fetch (only if needed)
     let customerInfo = null;
     if (bill.customer_id) {
-      const customer = await Customer.findOne({
-        where: { id: bill.customer_id, shop_id: shopId },
+      const customer = await Customer.findByPk(bill.customer_id, {
         attributes: ["id", "name", "phone", "address", "total_due"],
       });
       if (customer) {
         customerInfo = {
-          id:        customer.id,
-          name:      customer.name,
-          phone:     customer.phone,
-          address:   customer.address,
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          address: customer.address,
           total_due: customer.total_due,
         };
       }
     }
 
-    // Build clean response shape
-    const items = (bill.BillItems || []).map((bi) => ({
-      id:           bi.id,
-      product_id:   bi.product_id,
+    // ✅ Optimized response building
+    const items = bill.BillItems.map((bi) => ({
+      id: bi.id,
+      product_id: bi.product_id,
       product_name: bi.Product ? bi.Product.product_name : (bi.item_name || 'Manual Item'),
-      quantity:     bi.quantity,
-      unit_price:   bi.price,
-      total:        parseFloat((bi.price * bi.quantity).toFixed(2)),
+      quantity: bi.quantity,
+      unit_price: bi.price,
+      total: parseFloat((bi.price * bi.quantity).toFixed(2)),
     }));
 
-    const payments = (bill.BillPayments || []).map((bp) => ({
-      id:           bp.id,
-      amount:       bp.amount,
+    const payments = bill.BillPayments.map((bp) => ({
+      id: bp.id,
+      amount: bp.amount,
       payment_mode: bp.payment_mode,
       reference_id: bp.reference_id,
-      paid_at:      bp.created_at,
+      paid_at: bp.created_at,
     }));
 
     res.json({
-      id:                  bill.id,
-      bill_number:         bill.bill_number,
-      status:              bill.status,
-      // Customer info
+      id: bill.id,
+      bill_number: bill.bill_number,
+      status: bill.status,
       customer: customerInfo || (bill.customer_name || bill.customer_phone
         ? { id: null, name: bill.customer_name, phone: bill.customer_phone, address: null, total_due: null }
         : null),
-      // Amounts
-      subtotal_amount:     bill.subtotal_amount,
-      gst_percentage:      bill.gst_percentage,
-      gst_amount:          bill.gst_amount,
+      subtotal_amount: bill.subtotal_amount,
+      gst_percentage: bill.gst_percentage,
+      gst_amount: bill.gst_amount,
       discount_percentage: bill.discount_percentage,
-      discount_amount:     bill.discount_amount,
-      total_amount:        bill.total_amount,
-      paid_amount:         bill.paid_amount,
-      due_amount:          bill.due_amount,
-      // Items & payments
+      discount_amount: bill.discount_amount,
+      total_amount: bill.total_amount,
+      paid_amount: bill.paid_amount,
+      due_amount: bill.due_amount,
       items,
       payments,
-      // Meta
-      created_by:          bill.created_by,
-      created_at:          bill.createdAt,
-      updated_at:          bill.updatedAt,
+      created_by: bill.created_by,
+      created_at: bill.createdAt,
+      updated_at: bill.updatedAt,
     });
   } catch (error) {
     console.error("getBillWithDetails error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
 
@@ -753,28 +828,9 @@ export const editBill = async (req, res) => {
         // Current available stock (after rollback)
         const currentStock = parseFloat(product.stock_quantity);
         
-        console.log(`Stock check for product ${product.product_name} (ID: ${item.product_id}):`, {
-          currentStock,
-          requestedQty: quantity,
-          available: currentStock >= quantity
-        });
-        
         // ✅ Allow negative stock for bill edit (stock will be managed separately)
-        // if (currentStock < quantity) {
-        //   await transaction.rollback();
-        //   return res.status(400).json({ 
-        //     message: `Insufficient stock for: ${product.product_name}. Available: ${currentStock}, Required: ${quantity}`,
-        //     error: 'INSUFFICIENT_STOCK',
-        //     productId: item.product_id,
-        //     productName: product.product_name,
-        //     availableStock: currentStock,
-        //     requestedQuantity: quantity
-        //   });
-        // }
-        
-        // ✅ Show warning but allow the transaction to continue
         if (currentStock < quantity) {
-          console.warn(`⚠️ Negative stock warning: ${product.product_name} - Available: ${currentStock}, Required: ${quantity}`);
+          console.warn(`⚠️ Low stock: ${product.product_name} — available: ${currentStock}, requested: ${quantity}`);
         }
         
         if (isNaN(price)) price = product.selling_price;
@@ -867,18 +923,16 @@ export const editBill = async (req, res) => {
     });
   } catch (error) {
     await transaction.rollback();
-    console.error("Edit bill error:", error);
-    console.error("Error stack:", error.stack);
+    console.error("Edit bill error:", error.message);
     res.status(500).json({ 
-      error: error.message,
-      details: error.name === 'SequelizeValidationError' ? error.errors : undefined
+      error: process.env.NODE_ENV === 'production' ? 'Failed to update bill' : error.message
     });
   }
 };
 
 /**
  * ======================================
- * 🗑️ DELETE BILL
+ * 🗑️ DELETE BILL (OPTIMIZED)
  * ======================================
  */
 export const deleteBill = async (req, res) => {
@@ -888,10 +942,13 @@ export const deleteBill = async (req, res) => {
     const { id } = req.params;
     const shopId = req.user.shop_id;
 
-    // Find the bill
+    // ✅ Optimized: Fetch bill with items in single query
     const bill = await Bill.findOne({
       where: { id, shop_id: shopId },
-      include: [{ model: BillItem }],
+      include: [{ 
+        model: BillItem,
+        attributes: ['id', 'product_id', 'quantity'] // Only needed fields
+      }],
       transaction
     });
 
@@ -905,21 +962,38 @@ export const deleteBill = async (req, res) => {
       return res.status(400).json({ message: "Bill is already cancelled" });
     }
 
-    // Restore stock for product items
+    // ✅ Optimized: Batch stock updates instead of individual updates
+    const stockUpdates = [];
     for (const item of bill.BillItems) {
       if (item.product_id) {
-        await Product.update(
-          { stock_quantity: sequelize.literal(`stock_quantity + ${item.quantity}`) },
-          { where: { id: item.product_id, shop_id: shopId }, transaction }
-        );
+        stockUpdates.push({
+          id: item.product_id,
+          increment: item.quantity
+        });
       }
     }
 
-    // Delete related records
-    await BillPayment.destroy({ where: { bill_id: bill.id }, transaction });
-    await BillItem.destroy({ where: { bill_id: bill.id }, transaction });
+    // ✅ Parallel operations for better performance
+    const deleteOperations = [
+      BillPayment.destroy({ where: { bill_id: bill.id }, transaction }),
+      BillItem.destroy({ where: { bill_id: bill.id }, transaction }),
+    ];
+
+    // ✅ Batch stock updates
+    if (stockUpdates.length > 0) {
+      const stockUpdatePromises = stockUpdates.map(update => 
+        Product.update(
+          { stock_quantity: sequelize.literal(`stock_quantity + ${update.increment}`) },
+          { where: { id: update.id, shop_id: shopId }, transaction }
+        )
+      );
+      deleteOperations.push(...stockUpdatePromises);
+    }
+
+    // ✅ Execute all operations in parallel
+    await Promise.all(deleteOperations);
     
-    // Delete the bill
+    // ✅ Finally delete the bill
     await Bill.destroy({ where: { id: bill.id }, transaction });
 
     await transaction.commit();
@@ -929,6 +1003,6 @@ export const deleteBill = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error("Delete bill error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message });
   }
 };
