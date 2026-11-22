@@ -10,8 +10,9 @@ export const apiLimiter = rateLimit({
 
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20, // login/signup limit
+  max: 100, // ✅ Increased for testing
   message: {
     message: "Too many login attempts, slow down",
   },
+  skipSuccessfulRequests: true, // ✅ Don't count successful logins
 });
